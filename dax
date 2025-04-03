@@ -1,0 +1,11 @@
+Merged Column = 
+VAR BroadType = IF([Broad Type of Medicine] <> "N/A", [Broad Type of Medicine], "")
+VAR Comp = IF([Compound] <> "N/A", [Compound], "")
+VAR Ind = IF([Indication] <> "N/A", [Indication], "")
+VAR Tri = IF([Trial] <> "N/A", [Trial], "")
+
+RETURN
+    BroadType & 
+    IF(AND(BroadType <> "", Comp <> ""), "_", "") & Comp &
+    IF(AND(OR(BroadType <> "", Comp <> ""), Ind <> ""), "_", "") & Ind &
+    IF(AND(OR(BroadType <> "", Comp <> "", Ind <> ""), Tri <> ""), "_", "") & Tri
