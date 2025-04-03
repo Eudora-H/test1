@@ -8,4 +8,4 @@ RETURN
     BroadType & 
     IF(AND(BroadType <> "", Comp <> ""), "_", "") & Comp &
     IF(AND(OR(BroadType <> "", Comp <> ""), Ind <> ""), "_", "") & Ind &
-    IF(AND(OR(BroadType <> "", Comp <> "", Ind <> ""), Tri <> ""), "_", "") & Tri
+    IF(AND(OR(BroadType <> "", OR(Comp <> "", Ind <> "")), Tri <> ""), "_", "") & Tri
