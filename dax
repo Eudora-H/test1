@@ -9,3 +9,7 @@ RETURN
     IF(AND(BroadType <> "", Comp <> ""), "_", "") & Comp &
     IF(AND(OR(BroadType <> "", Comp <> ""), Ind <> ""), "_", "") & Ind &
     IF(AND(OR(BroadType <> "", OR(Comp <> "", Ind <> "")), Tri <> ""), "_", "") & Tri
+
+
+TrialFormatted = 
+IF([Trial] = "N/A" || ISBLANK([Trial]), "", "[Trial]" & [Trial])
