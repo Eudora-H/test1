@@ -11,5 +11,14 @@ RETURN
     IF(AND(OR(BroadType <> "", OR(Comp <> "", Ind <> "")), Tri <> ""), "_", "") & Tri
 
 
-TrialFormatted = 
-IF([Trial] = "N/A" || ISBLANK([Trial]), "", "[Trial]" & [Trial])
+SearchConcat = 
+    LOWER(
+        [Broad Type of Medicine] & " " &
+       [Therapeutic area] & " " &
+        [Compound] & " " &
+        [Indication] & " " &
+        [Category] & " " &
+        [Description (Sim)] & " " &
+	[Remarks]
+    )
+
