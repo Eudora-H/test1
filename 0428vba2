@@ -1,0 +1,578 @@
+Sub CreateCleanedDataset()
+    ' Declare variables
+    Dim portfolioFile As String, studyMilestoneFile As String, countryMilestoneFile As String
+    Dim devBRFile As String, countryCodingFile As String
+    Dim portfolioWB As Workbook, studyMilestoneWB As Workbook, countryMilestoneWB As Workbook, outputWB As Workbook
+    Dim devBRWB As Workbook, countryCodingWB As Workbook
+    Dim portfolioSheet As Worksheet, studyMilestoneSheet As Worksheet, countryMilestoneSheet As Worksheet, outputSheet As Worksheet
+    Dim devBRSheet As Worksheet, countryCodingSheet As Worksheet
+    Dim portfolioLastRow As Long, outputLastRow As Long, studyMilestoneLastRow As Long, countryMilestoneLastRow As Long
+    Dim devBRLastRow As Long, countryCodingLastRow As Long
+    Dim portfolioColumns As Variant, col As Variant, colIndex As Long, findResult As Range
+    Dim i As Long, j As Long, matchFound As Boolean
+    
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+    
+    ' Get the Portfolio Overview file
+    MsgBox "Please select the Portfolio Overview file.", vbInformation
+    portfolioFile = SelectExcelFile("Select Portfolio Overview file")
+    If portfolioFile = "" Then
+        MsgBox "Portfolio Overview file was not selected. Process canceled.", vbExclamation
+        Exit Sub
+    End If
+    
+    ' Get the Study Milestone file
+    MsgBox "Please select the Study Milestone file.", vbInformation
+    studyMilestoneFile = SelectExcelFile("Select Study Milestone file")
+    If studyMilestoneFile = "" Then
+        MsgBox "Study Milestone file was not selected. Process canceled.", vbExclamation
+        Exit Sub
+    End If
+    
+    ' Get the Country Milestone file
+    MsgBox "Please select the Country Milestone file.", vbInformation
+    countryMilestoneFile = SelectExcelFile("Select Country Milestone file")
+    If countryMilestoneFile = "" Then
+        MsgBox "Country Milestone file was not selected. Process canceled.", vbExclamation
+        Exit Sub
+    End If
+    
+    ' Get the DEV_BR targets file
+    MsgBox "Please select the DEV_BR targets file.", vbInformation
+    devBRFile = SelectExcelFile("Select DEV_BR targets file")
+    If devBRFile = "" Then
+        MsgBox "DEV_BR targets file was not selected. Process canceled.", vbExclamation
+        Exit Sub
+    End If
+    
+    ' Get the Country Coding file
+    MsgBox "Please select the Country Coding file.", vbInformation
+    countryCodingFile = SelectExcelFile("Select Country Coding file")
+    If countryCodingFile = "" Then
+        MsgBox "Country Coding file was not selected. Process canceled.", vbExclamation
+        Exit Sub
+    End If
+    
+    ' Open the workbooks
+    On Error Resume Next
+    Set portfolioWB = Workbooks.Open(portfolioFile)
+    If Err.Number <> 0 Then
+        MsgBox "Error opening Portfolio Overview file: " & Err.Description, vbExclamation
+        Application.ScreenUpdating = True
+        Application.DisplayAlerts = True
+        Exit Sub
+    End If
+    
+    Set studyMilestoneWB = Workbooks.Open(studyMilestoneFile)
+    If Err.Number <> 0 Then
+        MsgBox "Error opening Study Milestone file: " & Err.Description, vbExclamation
+        If Not portfolioWB Is Nothing Then portfolioWB.Close SaveChanges:=False
+        Application.ScreenUpdating = True
+        Application.DisplayAlerts = True
+        Exit Sub
+    End If
+    
+    Set countryMilestoneWB = Workbooks.Open(countryMilestoneFile)
+    If Err.Number <> 0 Then
+        MsgBox "Error opening Country Milestone file: " & Err.Description, vbExclamation
+        If Not portfolioWB Is Nothing Then portfolioWB.Close SaveChanges:=False
+        If Not studyMilestoneWB Is Nothing Then studyMilestoneWB.Close SaveChanges:=False
+        Application.ScreenUpdating = True
+        Application.DisplayAlerts = True
+        Exit Sub
+    End If
+    
+    Set devBRWB = Workbooks.Open(devBRFile)
+    If Err.Number <> 0 Then
+        MsgBox "Error opening DEV_BR targets file: " & Err.Description, vbExclamation
+        If Not portfolioWB Is Nothing Then portfolioWB.Close SaveChanges:=False
+        If Not studyMilestoneWB Is Nothing Then studyMilestoneWB.Close SaveChanges:=False
+        If Not countryMilestoneWB Is Nothing Then countryMilestoneWB.Close SaveChanges:=False
+        Application.ScreenUpdating = True
+        Application.DisplayAlerts = True
+        Exit Sub
+    End If
+    
+    Set countryCodingWB = Workbooks.Open(countryCodingFile)
+    If Err.Number <> 0 Then
+        MsgBox "Error opening Country Coding file: " & Err.Description, vbExclamation
+        If Not portfolioWB Is Nothing Then portfolioWB.Close SaveChanges:=False
+        If Not studyMilestoneWB Is Nothing Then studyMilestoneWB.Close SaveChanges:=False
+        If Not countryMilestoneWB Is Nothing Then countryMilestoneWB.Close SaveChanges:=False
+        If Not devBRWB Is Nothing Then devBRWB.Close SaveChanges:=False
+        Application.ScreenUpdating = True
+        Application.DisplayAlerts = True
+        Exit Sub
+    End If
+    
+    On Error GoTo 0
+    
+    ' Create a new workbook for output
+    Set outputWB = Workbooks.Add
+    Set outputSheet = outputWB.Sheets(1)
+    outputSheet.Name = "Cleaned Data"
+    
+    ' Get the first sheets from each workbook
+    Set portfolioSheet = portfolioWB.Sheets(1)
+    Set studyMilestoneSheet = studyMilestoneWB.Sheets(1)
+    Set countryMilestoneSheet = countryMilestoneWB.Sheets(1)
+    Set devBRSheet = devBRWB.Sheets(1)
+    Set countryCodingSheet = countryCodingWB.Sheets(1)
+    
+    ' Define the columns to extract from Portfolio Overview
+    portfolioColumns = Array("Study", "Study status", "Therapeutic Area", "Indication", "Organizational Unit", _
+                           "Country", "Global / Hub", "Biomedical Research TA", _
+                           "Patients entered treatment planned as of today", "FPO plan approval date", _
+                           "SIV target (NCV CTMS)", "SIV actual", "SIV plan as of today")
+    
+    ' Get the last row in the Portfolio Overview sheet
+    portfolioLastRow = portfolioSheet.Cells(portfolioSheet.Rows.Count, 1).End(xlUp).Row
+    
+    ' Add headers to the output sheet
+    ' First column is the current month
+    outputSheet.Cells(1, 1).Value = "cur month"
+    
+    ' Add the Portfolio Overview columns
+    colIndex = 2
+    For Each col In portfolioColumns
+        outputSheet.Cells(1, colIndex).Value = col
+        colIndex = colIndex + 1
+    Next col
+    
+    ' Add the joined columns from Study Milestone
+    outputSheet.Cells(1, colIndex).Value = "SSO Monitoring Sourcing"
+    colIndex = colIndex + 1
+    outputSheet.Cells(1, colIndex).Value = "LPFV (Actual Date) Study"
+    colIndex = colIndex + 1
+    outputSheet.Cells(1, colIndex).Value = "FPFV (Actual Date)_Study"
+    colIndex = colIndex + 1
+    
+    ' Add the joined columns from Country Milestone
+    outputSheet.Cells(1, colIndex).Value = "Country Inhouse/Outsourced"
+    colIndex = colIndex + 1
+    outputSheet.Cells(1, colIndex).Value = "LPFV (Actual Date) country"
+    colIndex = colIndex + 1
+    outputSheet.Cells(1, colIndex).Value = "FPFV (Actual Date)_country"
+    colIndex = colIndex + 1
+    
+    ' Add the joined columns from DEV_BR targets
+    outputSheet.Cells(1, colIndex).Value = "2025 Priority"
+    colIndex = colIndex + 1
+    outputSheet.Cells(1, colIndex).Value = "Objectives Category"
+    colIndex = colIndex + 1
+    
+    ' Add the joined columns from Country Coding
+    outputSheet.Cells(1, colIndex).Value = "GCO Country Type"
+    colIndex = colIndex + 1
+    outputSheet.Cells(1, colIndex).Value = "ISO"
+    
+    ' Fill in the current month for all rows
+    For i = 2 To portfolioLastRow
+        outputSheet.Cells(i, 1).Value = Format(Date, "yyyy-mm")
+    Next i
+    
+    ' Copy the data from Portfolio Overview to the output sheet
+    For i = 2 To portfolioLastRow
+        colIndex = 2
+        For Each col In portfolioColumns
+            ' Find the column in the Portfolio Overview sheet
+            Set findResult = portfolioSheet.Rows(1).Find(col, LookIn:=xlValues, LookAt:=xlWhole)
+            If Not findResult Is Nothing Then
+                ' Copy the value to the output sheet
+                outputSheet.Cells(i, colIndex).Value = portfolioSheet.Cells(i, findResult.Column).Value
+            Else
+                ' Column not found, report the issue
+                MsgBox "Column '" & col & "' not found in Portfolio Overview sheet.", vbExclamation
+            End If
+            colIndex = colIndex + 1
+        Next col
+        
+        ' Process Study Milestone data (left join)
+        ' Get the Study value for matching
+        Dim studyValue As Variant
+        studyValue = outputSheet.Cells(i, 2).Value ' Study is the second column in the output
+        
+        ' Look for matching Trial Code in Study Milestone
+        matchFound = False
+        studyMilestoneLastRow = studyMilestoneSheet.Cells(studyMilestoneSheet.Rows.Count, 1).End(xlUp).Row
+        
+        ' Find the Trial Code column in Study Milestone
+        Dim trialCodeColStudy As Long, ssoMonitoringColStudy As Long, lpfvColStudy As Long, fpfvColStudy As Long
+        trialCodeColStudy = 0
+        ssoMonitoringColStudy = 0
+        lpfvColStudy = 0
+        fpfvColStudy = 0
+        
+        Set findResult = studyMilestoneSheet.Rows(1).Find("Trial Code", LookIn:=xlValues, LookAt:=xlWhole)
+        If Not findResult Is Nothing Then
+            trialCodeColStudy = findResult.Column
+        
+            ' Find the SSO Monitoring Sourcing column
+            Set findResult = studyMilestoneSheet.Rows(1).Find("SSO Monitoring Sourcing", LookIn:=xlValues, LookAt:=xlWhole)
+            If Not findResult Is Nothing Then
+                ssoMonitoringColStudy = findResult.Column
+            Else
+                MsgBox "Column 'SSO Monitoring Sourcing' not found in Study Milestone sheet.", vbExclamation
+            End If
+            
+            ' Find the LPFV (Actual Date) column
+            Set findResult = studyMilestoneSheet.Rows(1).Find("LPFV (Actual Date)", LookIn:=xlValues, LookAt:=xlWhole)
+            If Not findResult Is Nothing Then
+                lpfvColStudy = findResult.Column
+            Else
+                MsgBox "Column 'LPFV (Actual Date)' not found in Study Milestone sheet.", vbExclamation
+            End If
+            
+            ' Find the FPFV (Actual Date) column
+            Set findResult = studyMilestoneSheet.Rows(1).Find("FPFV (Actual Date)", LookIn:=xlValues, LookAt:=xlWhole)
+            If Not findResult Is Nothing Then
+                fpfvColStudy = findResult.Column
+            Else
+                MsgBox "Column 'FPFV (Actual Date)' not found in Study Milestone sheet.", vbExclamation
+            End If
+            
+            ' Search for the matching Trial Code
+            For j = 2 To studyMilestoneLastRow
+                If studyMilestoneSheet.Cells(j, trialCodeColStudy).Value = studyValue Then
+                    matchFound = True
+                    ' Copy SSO Monitoring Sourcing
+                    If ssoMonitoringColStudy > 0 Then
+                        outputSheet.Cells(i, colIndex).Value = studyMilestoneSheet.Cells(j, ssoMonitoringColStudy).Value
+                    End If
+                    colIndex = colIndex + 1
+                    
+                    ' Copy LPFV (Actual Date)
+                    If lpfvColStudy > 0 Then
+                        outputSheet.Cells(i, colIndex).Value = studyMilestoneSheet.Cells(j, lpfvColStudy).Value
+                    End If
+                    colIndex = colIndex + 1
+                    
+                    ' Copy FPFV (Actual Date)
+                    If fpfvColStudy > 0 Then
+                        outputSheet.Cells(i, colIndex).Value = studyMilestoneSheet.Cells(j, fpfvColStudy).Value
+                    End If
+                    colIndex = colIndex + 1
+                    
+                    Exit For
+                End If
+            Next j
+        Else
+            MsgBox "Column 'Trial Code' not found in Study Milestone sheet.", vbExclamation
+            colIndex = colIndex + 3 ' Skip the Study Milestone columns
+        End If
+        
+        ' If no match was found, still advance the column index
+        If Not matchFound And trialCodeColStudy > 0 Then
+            colIndex = colIndex + 3 ' Skip the Study Milestone columns
+        End If
+        
+        ' Process Country Milestone data (left join on both Trial Code and Country)
+        matchFound = False
+        countryMilestoneLastRow = countryMilestoneSheet.Cells(countryMilestoneSheet.Rows.Count, 1).End(xlUp).Row
+        
+        ' Find the Trial Code column in Country Milestone
+        Dim trialCodeColCountry As Long, countryColMilestone As Long, countrySourcingCol As Long, lpfvColCountry As Long, fpfvColCountry As Long
+        trialCodeColCountry = 0
+        countryColMilestone = 0
+        countrySourcingCol = 0
+        lpfvColCountry = 0
+        fpfvColCountry = 0
+        
+        ' Get the Country value from Portfolio Overview for the current row
+        Dim portfolioCountryValue As Variant
+        Dim countryColPortfolio As Long
+        countryColPortfolio = 0
+        
+        Set findResult = portfolioSheet.Rows(1).Find("Country", LookIn:=xlValues, LookAt:=xlWhole)
+        If Not findResult Is Nothing Then
+            countryColPortfolio = findResult.Column
+            portfolioCountryValue = portfolioSheet.Cells(i, findResult.Column).Value
+        Else
+            MsgBox "Column 'Country' not found in Portfolio Overview sheet.", vbExclamation
+        End If
+        
+        Set findResult = countryMilestoneSheet.Rows(1).Find("Trial Code", LookIn:=xlValues, LookAt:=xlWhole)
+        If Not findResult Is Nothing Then
+            trialCodeColCountry = findResult.Column
+            
+            ' Find the Country column in Country Milestone
+            Set findResult = countryMilestoneSheet.Rows(1).Find("Country", LookIn:=xlValues, LookAt:=xlWhole)
+            If Not findResult Is Nothing Then
+                countryColMilestone = findResult.Column
+            Else
+                MsgBox "Column 'Country' not found in Country Milestone sheet.", vbExclamation
+            End If
+            
+            ' Find the Country Inhouse/Outsourced column
+            Set findResult = countryMilestoneSheet.Rows(1).Find("Country Inhouse/Outsourced", LookIn:=xlValues, LookAt:=xlWhole)
+            If Not findResult Is Nothing Then
+                countrySourcingCol = findResult.Column
+            Else
+                MsgBox "Column 'Country Inhouse/Outsourced' not found in Country Milestone sheet.", vbExclamation
+            End If
+            
+            ' Find the LPFV (Actual Date) column
+            Set findResult = countryMilestoneSheet.Rows(1).Find("LPFV (Actual Date)", LookIn:=xlValues, LookAt:=xlWhole)
+            If Not findResult Is Nothing Then
+                lpfvColCountry = findResult.Column
+            Else
+                MsgBox "Column 'LPFV (Actual Date)' not found in Country Milestone sheet.", vbExclamation
+            End If
+            
+            ' Find the FPFV (Actual Date) column
+            Set findResult = countryMilestoneSheet.Rows(1).Find("FPFV (Actual Date)", LookIn:=xlValues, LookAt:=xlWhole)
+            If Not findResult Is Nothing Then
+                fpfvColCountry = findResult.Column
+            Else
+                MsgBox "Column 'FPFV (Actual Date)' not found in Country Milestone sheet.", vbExclamation
+            End If
+            
+            ' Search for the matching Trial Code AND Country
+            For j = 2 To countryMilestoneLastRow
+                If countryMilestoneSheet.Cells(j, trialCodeColCountry).Value = studyValue And _
+                   countryMilestoneSheet.Cells(j, countryColMilestone).Value = portfolioCountryValue Then
+                    matchFound = True
+                    ' Copy Country Inhouse/Outsourced
+                    If countrySourcingCol > 0 Then
+                        outputSheet.Cells(i, colIndex).Value = countryMilestoneSheet.Cells(j, countrySourcingCol).Value
+                    End If
+                    colIndex = colIndex + 1
+                    
+                    ' Copy LPFV (Actual Date)
+                    If lpfvColCountry > 0 Then
+                        outputSheet.Cells(i, colIndex).Value = countryMilestoneSheet.Cells(j, lpfvColCountry).Value
+                    End If
+                    colIndex = colIndex + 1
+                    
+                    ' Copy FPFV (Actual Date)
+                    If fpfvColCountry > 0 Then
+                        outputSheet.Cells(i, colIndex).Value = countryMilestoneSheet.Cells(j, fpfvColCountry).Value
+                    End If
+                    colIndex = colIndex + 1
+                    
+                    Exit For
+                End If
+            Next j
+        Else
+            MsgBox "Column 'Trial Code' not found in Country Milestone sheet.", vbExclamation
+            colIndex = colIndex + 3 ' Skip the Country Milestone columns
+        End If
+        
+        ' If no match was found, still advance the column index
+        If Not matchFound And trialCodeColCountry > 0 Then
+            colIndex = colIndex + 3 ' Skip the Country Milestone columns
+        End If
+        
+        ' Process DEV_BR targets data (left join)
+        matchFound = False
+        devBRLastRow = devBRSheet.Cells(devBRSheet.Rows.Count, 1).End(xlUp).Row
+        
+        ' Find the Study column in DEV_BR targets
+        Dim studyColDevBR As Long, priorityCol As Long, objectivesCol As Long
+        studyColDevBR = 0
+        priorityCol = 0
+        objectivesCol = 0
+        
+        Set findResult = devBRSheet.Rows(1).Find("Study", LookIn:=xlValues, LookAt:=xlWhole)
+        If Not findResult Is Nothing Then
+            studyColDevBR = findResult.Column
+            
+            ' Find the 2025 Priority column
+            Set findResult = devBRSheet.Rows(1).Find("2025 Priority", LookIn:=xlValues, LookAt:=xlWhole)
+            If Not findResult Is Nothing Then
+                priorityCol = findResult.Column
+            Else
+                MsgBox "Column '2025 Priority' not found in DEV_BR targets sheet.", vbExclamation
+            End If
+            
+            ' Find the Objectives Category column
+            Set findResult = devBRSheet.Rows(1).Find("Objectives Category", LookIn:=xlValues, LookAt:=xlWhole)
+            If Not findResult Is Nothing Then
+                objectivesCol = findResult.Column
+            Else
+                MsgBox "Column 'Objectives Category' not found in DEV_BR targets sheet.", vbExclamation
+            End If
+            
+            ' Search for the matching Study
+            For j = 2 To devBRLastRow
+                If devBRSheet.Cells(j, studyColDevBR).Value = studyValue Then
+                    matchFound = True
+                    ' Copy 2025 Priority
+                    If priorityCol > 0 Then
+                        outputSheet.Cells(i, colIndex).Value = devBRSheet.Cells(j, priorityCol).Value
+                    End If
+                    colIndex = colIndex + 1
+                    
+                    ' Copy Objectives Category
+                    If objectivesCol > 0 Then
+                        outputSheet.Cells(i, colIndex).Value = devBRSheet.Cells(j, objectivesCol).Value
+                    End If
+                    colIndex = colIndex + 1
+                    
+                    Exit For
+                End If
+            Next j
+        Else
+            MsgBox "Column 'Study' not found in DEV_BR targets sheet.", vbExclamation
+            colIndex = colIndex + 2 ' Skip the DEV_BR targets columns
+        End If
+        
+        ' If no match was found, still advance the column index
+        If Not matchFound And studyColDevBR > 0 Then
+            colIndex = colIndex + 2 ' Skip the DEV_BR targets columns
+        End If
+        
+        ' Process Country Coding data (left join)
+        matchFound = False
+        countryCodingLastRow = countryCodingSheet.Cells(countryCodingSheet.Rows.Count, 1).End(xlUp).Row
+        
+        ' Get the Country value for matching
+        Dim countryValue As Variant
+        Set findResult = portfolioSheet.Rows(1).Find("Country", LookIn:=xlValues, LookAt:=xlWhole)
+        If Not findResult Is Nothing Then
+            countryValue = portfolioSheet.Cells(i, findResult.Column).Value
+        End If
+        
+        ' Find the Country column in Country Coding
+        Dim countryColCoding As Long, gcoTypeCol As Long, isoCol As Long
+        countryColCoding = 0
+        gcoTypeCol = 0
+        isoCol = 0
+        
+        Set findResult = countryCodingSheet.Rows(1).Find("Country", LookIn:=xlValues, LookAt:=xlWhole)
+        If Not findResult Is Nothing Then
+            countryColCoding = findResult.Column
+            
+            ' Find the GCO Country Type column
+            Set findResult = countryCodingSheet.Rows(1).Find("GCO Country Type", LookIn:=xlValues, LookAt:=xlWhole)
+            If Not findResult Is Nothing Then
+                gcoTypeCol = findResult.Column
+            Else
+                MsgBox "Column 'GCO Country Type' not found in Country Coding sheet.", vbExclamation
+            End If
+            
+            ' Find the ISO column
+            Set findResult = countryCodingSheet.Rows(1).Find("ISO", LookIn:=xlValues, LookAt:=xlWhole)
+            If Not findResult Is Nothing Then
+                isoCol = findResult.Column
+            Else
+                MsgBox "Column 'ISO' not found in Country Coding sheet.", vbExclamation
+            End If
+            
+            ' Search for the matching Country
+            If Not IsEmpty(countryValue) Then
+                For j = 2 To countryCodingLastRow
+                    If countryCodingSheet.Cells(j, countryColCoding).Value = UCase(countryValue) Then
+                        matchFound = True
+                        ' Copy GCO Country Type
+                        If gcoTypeCol > 0 Then
+                            outputSheet.Cells(i, colIndex).Value = countryCodingSheet.Cells(j, gcoTypeCol).Value
+                        End If
+                        colIndex = colIndex + 1
+                        
+                        ' Copy ISO
+                        If isoCol > 0 Then
+                            outputSheet.Cells(i, colIndex).Value = countryCodingSheet.Cells(j, isoCol).Value
+                        End If
+                        
+                        Exit For
+                    End If
+                Next j
+            End If
+        Else
+            MsgBox "Column 'Country' not found in Country Coding sheet.", vbExclamation
+            colIndex = colIndex + 2 ' Skip the Country Coding columns
+        End If
+        
+        ' If no match was found, still advance the column index
+        If Not matchFound And countryColCoding > 0 Then
+            colIndex = colIndex + 2 ' Skip the Country Coding columns
+        End If
+    Next i
+    
+    ' Auto-fit columns for better readability
+    outputSheet.Columns("A:Z").AutoFit
+    
+    ' Ask the user where to save the output file
+    Dim saveFilePath As String
+    saveFilePath = SaveExcelFile("Save Cleaned Dataset As", "Cleaned dataset for SIV&RR scorecard.xlsx")
+    
+    If saveFilePath <> "" Then
+        ' Save the output workbook
+        On Error Resume Next
+        outputWB.SaveAs saveFilePath
+        If Err.Number <> 0 Then
+            MsgBox "Error saving the output file: " & Err.Description, vbExclamation
+            On Error GoTo 0
+            Exit Sub
+        End If
+        On Error GoTo 0
+        
+        ' Close the workbooks
+        portfolioWB.Close SaveChanges:=False
+        studyMilestoneWB.Close SaveChanges:=False
+        countryMilestoneWB.Close SaveChanges:=False
+        devBRWB.Close SaveChanges:=False
+        countryCodingWB.Close SaveChanges:=False
+        
+        ' Show success message
+        MsgBox "Process completed. Output file created: " & saveFilePath
+    Else
+        MsgBox "Save operation was canceled. The output file was not saved.", vbExclamation
+    End If
+    
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+End Sub
+
+Function SelectExcelFile(dialogTitle As String) As String
+    ' Opens a file dialog to select an Excel file and returns its path
+    Dim fd As FileDialog
+    
+    ' Create a FileDialog object as a File Picker
+    Set fd = Application.FileDialog(msoFileDialogFilePicker)
+    
+    With fd
+        .Title = dialogTitle
+        .AllowMultiSelect = False
+        .Filters.Clear
+        .Filters.Add "Excel Files", "*.xlsx; *.xls; *.xlsm"
+        
+        ' Show the dialog
+        If .Show = -1 Then
+            ' User selected a file
+            SelectExcelFile = .SelectedItems(1)
+        Else
+            ' User canceled
+            SelectExcelFile = ""
+        End If
+    End With
+    
+    Set fd = Nothing
+End Function
+
+Function SaveExcelFile(dialogTitle As String, defaultFileName As String) As String
+    ' Opens a file dialog to save an Excel file and returns the chosen path
+    Dim fd As FileDialog
+    
+    ' Create a FileDialog object as a File Picker in Save mode
+    Set fd = Application.FileDialog(msoFileDialogSaveAs)
+    
+    With fd
+        .Title = dialogTitle
+        .FilterIndex = 1
+        .InitialFileName = defaultFileName
+        
+        ' Show the dialog
+        If .Show = -1 Then
+            ' User selected a location
+            SaveExcelFile = .SelectedItems(1)
+        Else
+            ' User canceled
+            SaveExcelFile = ""
+        End If
+    End With
+    
+    Set fd = Nothing
+End Function
