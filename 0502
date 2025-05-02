@@ -1,0 +1,1 @@
+= IF(AND('SIV plan as of today'=0, 'SIV actual'=0), "", IF('SIV plan as of today'=0, IF('SIV actual'>0,1,-1), 'SIV actual'/'SIV plan as of today'))
