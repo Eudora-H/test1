@@ -131,7 +131,7 @@ Sub CreateCleanedDataset()
     
     ' Add headers to the output sheet
     ' First column is the current month
-    outputSheet.Cells(1, 1).Value = "cur month"
+    outputSheet.Cells(1, 1).Value = "cur_month"
     
     ' Add the Portfolio Overview columns
     colIndex = 2
@@ -143,7 +143,7 @@ Sub CreateCleanedDataset()
     ' Add the joined columns from Study Milestone
     outputSheet.Cells(1, colIndex).Value = "SSO Monitoring Sourcing"
     colIndex = colIndex + 1
-    outputSheet.Cells(1, colIndex).Value = "LPFV (Actual Date) Study"
+    outputSheet.Cells(1, colIndex).Value = "LPFV (Actual Date)_Study"
     colIndex = colIndex + 1
     outputSheet.Cells(1, colIndex).Value = "FPFV (Actual Date)_Study"
     colIndex = colIndex + 1
@@ -151,7 +151,7 @@ Sub CreateCleanedDataset()
     ' Add the joined columns from Country Milestone
     outputSheet.Cells(1, colIndex).Value = "Country Inhouse/Outsourced"
     colIndex = colIndex + 1
-    outputSheet.Cells(1, colIndex).Value = "LPFV (Actual Date) country"
+    outputSheet.Cells(1, colIndex).Value = "LPFV (Actual Date)_country"
     colIndex = colIndex + 1
     outputSheet.Cells(1, colIndex).Value = "FPFV (Actual Date)_country"
     colIndex = colIndex + 1
