@@ -373,11 +373,12 @@ Sub CreateCleanedDataset()
         devBRLastRow = devBRSheet.Cells(devBRSheet.Rows.Count, 1).End(xlUp).Row
         
         ' Find the Study column in DEV_BR targets
-        Dim studyColDevBR As Long, priorityCol As Long, milestoneTargetCol As Long, chnJpnPriorityCol As Long
+        Dim studyColDevBR As Long, priorityCol As Long, milestoneTargetCol As Long, chnJpnPriorityCol As Long, focusedPlatformCol As Long
         studyColDevBR = 0
         priorityCol = 0
         milestoneTargetCol = 0
         chnJpnPriorityCol = 0
+        focusedPlatformCol = 0
         
         Set findResult = devBRSheet.Rows(1).Find("Study", LookIn:=xlValues, LookAt:=xlWhole)
         If Not findResult Is Nothing Then
@@ -407,6 +408,14 @@ Sub CreateCleanedDataset()
                 MsgBox "Column 'CHN/JPN Priority' not found in DEV_BR targets sheet.", vbExclamation
             End If
             
+            ' Find the Focused Platform column
+            Set findResult = devBRSheet.Rows(1).Find("Focused Platform", LookIn:=xlValues, LookAt:=xlWhole)
+            If Not findResult Is Nothing Then
+                focusedPlatformCol = findResult.Column
+            Else
+                MsgBox "Column 'Focused Platform' not found in DEV_BR targets sheet.", vbExclamation
+            End If
+            
             ' Search for the matching Study
             For j = 2 To devBRLastRow
                 If devBRSheet.Cells(j, studyColDevBR).Value = studyValue Then
@@ -429,17 +438,23 @@ Sub CreateCleanedDataset()
                     End If
                     colIndex = colIndex + 1
                     
+                    ' Copy Focused Platform
+                    If focusedPlatformCol > 0 Then
+                        outputSheet.Cells(i, colIndex).Value = devBRSheet.Cells(j, focusedPlatformCol).Value
+                    End If
+                    colIndex = colIndex + 1
+                    
                     Exit For
                 End If
             Next j
         Else
             MsgBox "Column 'Study' not found in DEV_BR targets sheet.", vbExclamation
-            colIndex = colIndex + 3 ' Skip the DEV_BR targets columns (now 3 columns)
+            colIndex = colIndex + 4 ' Skip the DEV_BR targets columns (now 4 columns with Focused Platform added)
         End If
         
         ' If no match was found, still advance the column index
         If Not matchFound And studyColDevBR > 0 Then
-            colIndex = colIndex + 3 ' Skip the DEV_BR targets columns (now 3 columns)
+            colIndex = colIndex + 4 ' Skip the DEV_BR targets columns (now 4 columns with Focused Platform added)
         End If
         
         ' Process Country Coding data (left join)
@@ -515,7 +530,7 @@ Sub CreateCleanedDataset()
     
     ' Ask the user where to save the output file
     Dim saveFilePath As String
-    saveFilePath = SaveExcelFile("Save Cleaned Dataset As", "Cleaned dataset for SIV&RR scorecard.xlsx")
+    saveFilePath = SaveExcelFile("Save Cleaned Dataset As", "Dataset for SIV&Rcrt scorecard.xlsx")
     
     If saveFilePath <> "" Then
         ' Save the output workbook
