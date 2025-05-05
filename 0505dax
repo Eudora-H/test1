@@ -1,0 +1,13 @@
+IF(
+    'SIV plan as of today' = 0,
+    IF('SIV actual' > 0, "≥ 100%", "upcoming"),
+    IF(
+        'SIV actual' / 'SIV plan as of today' >= 1,
+        "≥ 100%",
+        IF(
+            'SIV actual' / 'SIV plan as of today' >= 0.9,
+            "90% - 100%",
+            "<90%"
+        )
+    )
+)
