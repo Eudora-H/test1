@@ -1,19 +1,19 @@
 Column = 
+VAR MaxDate = CALCULATE(MAX('YourDateTable'[cur_month]))
+VAR IsMaxMonth = 'YourDateTable'[cur_month] = MaxDate
+VAR ArrowSymbol = IF(IsMaxMonth, "", "→")
+RETURN
 IF(
     'Portfolio'[SIV plan as of today] = 0,
-    "",
-    IF('Portfolio'[SIV actual] > 0,
-       IF(MAX('Date'[Date]) = [cur month], "🟢", "🟢→"),
-       IF(MAX('Date'[Date]) = [cur month], "⚪", "⚪→")
-    ),
+    IF('Portfolio'[SIV actual] > 0, "🟢" & ArrowSymbol, "⚪" & ArrowSymbol),
     IF(
         'Portfolio'[SIV actual] / 'Portfolio'[SIV plan as of today] >= 1,
-        IF(MAX('Date'[Date]) = [cur month], "🟢", "🟢→"),
+        "🟢" & ArrowSymbol,
         IF(
             AND('Portfolio'[SIV actual] / 'Portfolio'[SIV plan as of today] >= 0.9, 
                 'Portfolio'[SIV actual] / 'Portfolio'[SIV plan as of today] < 1),
-            IF(MAX('Date'[Date]) = [cur month], "🟡", "🟡→"),
-            IF(MAX('Date'[Date]) = [cur month], "🔴", "🔴→")
+            "🟡" & ArrowSymbol,
+            "🔴" & ArrowSymbol
         )
     )
 )
