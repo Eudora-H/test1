@@ -1,0 +1,5 @@
+   # > 90% = COUNTX(FILTER(YourTable, YourTable[%SIV] > 0.9), YourTable[%SIV])
+   
+   # total trials = COUNTX(FILTER(YourTable, NOT(ISBLANK(YourTable[%SIV]))), YourTable[%SIV])
+   
+   % On track = DIVIDE([# > 90%], [# total trials], 0)
