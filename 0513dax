@@ -1,0 +1,33 @@
+To solve your PowerBI matrix issue with blank cells not accepting background color, you'll need to use a DAX measure to replace blank values. Since you're working with text values, here's how to approach it:
+
+1. Create a new measure that checks if your current value exists and replaces blanks with a placeholder value:
+
+```
+DisplayValue = 
+VAR CurrentValue = [YourExistingMeasure]
+RETURN
+    IF(
+        ISBLANK(CurrentValue),
+        "No Data",  // Replace with your preferred placeholder text
+        CurrentValue
+    )
+```
+
+2. Use this new measure in your matrix instead of your original measure.
+
+3. Now you can apply conditional formatting to all cells since none will be truly blank.
+
+For your specific country-based formatting, you can create a separate measure for the formatting condition:
+
+```
+BackgroundCondition = 
+IF(
+    SELECTEDVALUE(TableName[Country]) = "YourTargetCountry",
+    1,
+    0
+)
+```
+
+Then use this measure for your background color conditional formatting rules.
+
+Would you like me to explain any part of this solution in more detail?​​​​​​​​​​​​​​​​
