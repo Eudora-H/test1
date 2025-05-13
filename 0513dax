@@ -1,33 +1,34 @@
-To solve your PowerBI matrix issue with blank cells not accepting background color, you'll need to use a DAX measure to replace blank values. Since you're working with text values, here's how to approach it:
+I understand why the solution didn't work. The problem is that in a matrix, when data doesn't exist for certain combinations of dimensions (like specific country+month+ID combinations), PowerBI doesn't even evaluate the measure for those cells - they're structurally blank rather than containing blank values.
 
-1. Create a new measure that checks if your current value exists and replaces blanks with a placeholder value:
+Here's a more effective approach:
+
+1. Create a new calculated column in your data table instead of a measure:
+
+```
+DisplayColumn = 
+IF(
+    ISBLANK([YourValueColumn]),
+    "No Data",
+    [YourValueColumn]
+)
+```
+
+2. Alternatively, if you must use a measure, try this version which forces evaluation across all combinations:
 
 ```
 DisplayValue = 
-VAR CurrentValue = [YourExistingMeasure]
+VAR CurrentValue = MAX([YourValueColumn])
 RETURN
     IF(
-        ISBLANK(CurrentValue),
-        "No Data",  // Replace with your preferred placeholder text
+        ISBLANK(CurrentValue) || CurrentValue = "",
+        "No Data",
         CurrentValue
     )
 ```
 
-2. Use this new measure in your matrix instead of your original measure.
+3. You might also need to modify your matrix to show "empty" cells:
+   - Click on your matrix
+   - Go to Format pane > Values
+   - Turn on "Show items with no data"
 
-3. Now you can apply conditional formatting to all cells since none will be truly blank.
-
-For your specific country-based formatting, you can create a separate measure for the formatting condition:
-
-```
-BackgroundCondition = 
-IF(
-    SELECTEDVALUE(TableName[Country]) = "YourTargetCountry",
-    1,
-    0
-)
-```
-
-Then use this measure for your background color conditional formatting rules.
-
-Would you like me to explain any part of this solution in more detail?​​​​​​​​​​​​​​​​
+This should ensure all cells have a value and can accept background color formatting. Would you like me to suggest other approaches if this doesn't resolve the issue?​​​​​​​​​​​​​​​​
