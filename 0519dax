@@ -1,0 +1,25 @@
+Category = 
+VAR studySelected = 'AllCombos'[Study]
+VAR latestMon =
+    CALCULATE(
+        MAX('YourData'[mon]),
+        FILTER(
+            'YourData',
+            'YourData'[Study] = studySelected
+        )
+    )
+VAR result =
+    CALCULATE(
+        FIRSTNONBLANK('YourData'[Category], 1),
+        FILTER(
+            'YourData',
+            'YourData'[Study] = studySelected &&
+            'YourData'[mon] = latestMon
+        )
+    )
+RETURN
+IF(
+    ISBLANK(result),
+    "",
+    result
+)
