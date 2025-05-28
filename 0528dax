@@ -1,13 +1,150 @@
-ProgressLong = 
-UNION(
-    SELECTCOLUMNS(
-        YourTable,
-        "Attribute", "Startup",
-        "Status", IF(YourTable[progress_startup] = 1, "Achieved", "Missed")
-    ),
-    SELECTCOLUMNS(
-        YourTable,
-        "Attribute", "Enrolment",
-        "Status", IF(YourTable[progress_enrolment] = 1, "Achieved", "Missed")
-    )
-)
+Sub ProcessSiteMilestoneFile()
+    Dim wbSource As Workbook
+    Dim wsSource As Worksheet
+    Dim wbNew As Workbook
+    Dim wsNew As Worksheet
+    Dim filePath As Variant
+    Dim savePath As Variant
+    Dim lastRow As Long
+    Dim lastCol As Long
+    Dim i As Long, j As Long
+    Dim currentDate As String
+    Dim foundCol As Range
+    Dim requiredColumns As Variant
+    Dim colIndices() As Integer
+    Dim colCount As Integer
+    Dim fileName As String
+    
+    ' Define required columns
+    requiredColumns = Array("Trial Code", "Country", "Site Name", "Site Status", _
+                           "Total Completed - Actual", "Total Screen Failed - Actual", _
+                           "Total Enrolled - Planned", "Total Enrolled - Actual", _
+                           "Total Screened - Actual", "Total In Active Enrollment - Actual", _
+                           "Total In Treatment - Actual")
+    
+    ' 1. File selection with popup instruction
+    Application.ScreenUpdating = False
+    
+    filePath = Application.GetOpenFilename( _
+        FileFilter:="Excel Files (*.xls*), *.xls*", _
+        Title:="Please select Site Milestone file")
+    
+    ' Check if user cancelled
+    If filePath = False Then
+        MsgBox "No file selected. Operation cancelled.", vbInformation
+        Exit Sub
+    End If
+    
+    ' Open the selected file
+    Set wbSource = Workbooks.Open(filePath)
+    Set wsSource = wbSource.ActiveSheet
+    
+    ' Create a new workbook for cleaned data
+    Set wbNew = Workbooks.Add
+    Set wsNew = wbNew.ActiveSheet
+    wsNew.Name = "Cleaned_Data"
+    
+    ' Copy all data to new workbook first
+    wsSource.UsedRange.Copy
+    wsNew.Range("A1").PasteSpecial xlPasteAll
+    Application.CutCopyMode = False
+    
+    ' 2. Create current date column in NEW workbook
+    currentDate = Format(Date, "yyyy-mm-dd")
+    
+    ' Insert new column at the beginning
+    wsNew.Columns(1).Insert Shift:=xlToRight
+    wsNew.Cells(1, 1).Value = "cur_month"
+    
+    ' Find last row with data
+    lastRow = wsNew.Cells(wsNew.Rows.Count, 2).End(xlUp).Row
+    
+    ' Fill the cur_month column with current date
+    For i = 2 To lastRow
+        wsNew.Cells(i, 1).Value = currentDate
+    Next i
+    
+    ' 3. Remove rows containing "Applied filters:" in Trial Code column
+    ' First, find the Trial Code column (it's now shifted one position due to insertion)
+    Dim trialCodeCol As Integer
+    trialCodeCol = 0
+    
+    For j = 1 To wsNew.Cells(1, wsNew.Columns.Count).End(xlToLeft).Column
+        If wsNew.Cells(1, j).Value = "Trial Code" Then
+            trialCodeCol = j
+            Exit For
+        End If
+    Next j
+    
+    If trialCodeCol > 0 Then
+        ' Loop from bottom to top when deleting rows
+        For i = lastRow To 2 Step -1
+            If InStr(1, wsNew.Cells(i, trialCodeCol).Value, "Applied filters:", vbTextCompare) > 0 Then
+                wsNew.Rows(i).Delete
+            End If
+        Next i
+    Else
+        MsgBox "Trial Code column not found!", vbExclamation
+    End If
+    
+    ' Update last row after deletion
+    lastRow = wsNew.Cells(wsNew.Rows.Count, 1).End(xlUp).Row
+    
+    ' 4. Delete columns that are not in the required list
+    ' First add cur_month to the list of columns to keep
+    Dim columnsToKeep As Variant
+    ReDim columnsToKeep(0 To UBound(requiredColumns) + 1)
+    columnsToKeep(0) = "cur_month"
+    For i = 0 To UBound(requiredColumns)
+        columnsToKeep(i + 1) = requiredColumns(i)
+    Next i
+    
+    ' Delete columns from right to left
+    For j = wsNew.Cells(1, wsNew.Columns.Count).End(xlToLeft).Column To 1 Step -1
+        Dim keepColumn As Boolean
+        keepColumn = False
+        
+        For i = 0 To UBound(columnsToKeep)
+            If wsNew.Cells(1, j).Value = columnsToKeep(i) Then
+                keepColumn = True
+                Exit For
+            End If
+        Next i
+        
+        If Not keepColumn Then
+            wsNew.Columns(j).Delete
+        End If
+    Next j
+    
+    ' Auto-fit columns
+    wsNew.Cells.EntireColumn.AutoFit
+    
+    ' 5. Save the new file
+    ' Get original filename without extension
+    fileName = Mid(filePath, InStrRev(filePath, "\") + 1)
+    fileName = Left(fileName, InStrRev(fileName, ".") - 1)
+    
+    ' Suggest new filename with timestamp
+    savePath = Application.GetSaveAsFilename( _
+        InitialFileName:=fileName & "_Cleaned_" & Format(Now, "yyyymmdd_hhmmss"), _
+        FileFilter:="Excel Workbook (*.xlsx), *.xlsx", _
+        Title:="Save cleaned file as...")
+    
+    If savePath <> False Then
+        wbNew.SaveAs Filename:=savePath, FileFormat:=xlOpenXMLWorkbook
+        MsgBox "Processing completed successfully!" & vbCrLf & vbCrLf & _
+               "Original file: " & filePath & vbCrLf & _
+               "Cleaned file saved as: " & savePath & vbCrLf & vbCrLf & _
+               "Current date added: " & currentDate & vbCrLf & _
+               "Rows with 'Applied filters:' have been removed." & vbCrLf & _
+               "Only selected columns have been kept.", vbInformation
+    Else
+        MsgBox "Save cancelled. The cleaned data is still open in Excel.", vbExclamation
+    End If
+    
+    ' Close the original file without saving
+    wbSource.Close SaveChanges:=False
+    
+    Application.ScreenUpdating = True
+    
+End Sub
