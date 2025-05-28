@@ -1,0 +1,13 @@
+ProgressLong = 
+UNION(
+    SELECTCOLUMNS(
+        YourTable,
+        "Attribute", "Startup",
+        "Status", IF(YourTable[progress_startup] = 1, "Achieved", "Missed")
+    ),
+    SELECTCOLUMNS(
+        YourTable,
+        "Attribute", "Enrolment",
+        "Status", IF(YourTable[progress_enrolment] = 1, "Achieved", "Missed")
+    )
+)
