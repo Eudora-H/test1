@@ -1,0 +1,44 @@
+## Option 1: Using SELECTEDVALUE
+```dax
+Country Overview Text = SELECTEDVALUE('YourTableName'[Country], "All Countries") & " Overview"
+```
+
+This will show:
+- "USA Overview" when USA is selected
+- "Canada Overview" when Canada is selected
+- "All Countries Overview" when no country or multiple countries are selected
+
+## Option 2: Using CONCATENATEX for Multiple Selections
+```dax
+Country Overview Text = 
+VAR SelectedCountries = CONCATENATEX(
+    VALUES('YourTableName'[Country]),
+    'YourTableName'[Country],
+    ", "
+)
+RETURN 
+    IF(
+        ISBLANK(SelectedCountries),
+        "All Countries Overview",
+        SelectedCountries & " Overview"
+    )
+```
+
+This will show:
+- "USA, Canada Overview" when multiple countries are selected
+- "USA Overview" when one country is selected
+- "All Countries Overview" when no filter is applied
+
+## Option 3: With More Control
+```dax
+Country Overview Text = 
+VAR CountryCount = COUNTROWS(VALUES('YourTableName'[Country]))
+VAR SingleCountry = SELECTEDVALUE('YourTableName'[Country])
+RETURN 
+    SWITCH(
+        TRUE(),
+        CountryCount = 0, "All Countries Overview",
+        CountryCount = 1, SingleCountry & " Overview",
+        CountryCount > 1, "Multiple Countries Overview"
+    )
+```
