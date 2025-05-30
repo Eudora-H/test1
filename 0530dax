@@ -1,0 +1,20 @@
+Concatenated_Code = 
+VAR OrgUnit_Code = 
+    SWITCH(
+        TRUE(),
+        SEARCH("Biomedical Research", [Organizational Unit], 1, 0) > 0, "BR",
+        SEARCH("Development", [Organizational Unit], 1, 0) > 0, "Dev",
+        [Organizational Unit]
+    )
+VAR TherapeuticArea_Code = 
+    SWITCH(
+        TRUE(),
+        SEARCH("Cardio Renal Metabolic", [Therapeutic Area], 1, 0) > 0, "CRM",
+        SEARCH("Immunology", [Therapeutic Area], 1, 0) > 0, "IMM",
+        SEARCH("Neuroscience", [Therapeutic Area], 1, 0) > 0, "NS",
+        SEARCH("Global Health", [Therapeutic Area], 1, 0) > 0, "GH",
+        SEARCH("Oncology", [Therapeutic Area], 1, 0) > 0, "Onco",
+        [Therapeutic Area]
+    )
+RETURN
+    OrgUnit_Code & " " & TherapeuticArea_Code
