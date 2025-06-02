@@ -1,0 +1,62 @@
+Sub DebugCheckColumns()
+    Dim wbSource As Workbook
+    Dim wsSource As Worksheet
+    Dim filePath As Variant
+    Dim j As Long
+    Dim columnList As String
+    
+    ' File selection
+    filePath = Application.GetOpenFilename( _
+        FileFilter:="Excel Files (*.xls*), *.xls*", _
+        Title:="Please select Site Milestone file")
+    
+    If filePath = False Then
+        MsgBox "No file selected. Operation cancelled.", vbInformation
+        Exit Sub
+    End If
+    
+    ' Open the selected file
+    Set wbSource = Workbooks.Open(filePath)
+    Set wsSource = wbSource.ActiveSheet
+    
+    ' List all column headers
+    columnList = "Column headers in the file:" & vbCrLf & vbCrLf
+    
+    For j = 1 To wsSource.Cells(1, wsSource.Columns.Count).End(xlToLeft).Column
+        columnList = columnList & "Column " & j & ": [" & wsSource.Cells(1, j).Value & "]" & vbCrLf
+    Next j
+    
+    ' Display the column list
+    MsgBox columnList, vbInformation, "All Columns"
+    
+    ' Also check if "Total In Treatment - Actual" exists
+    Dim found As Boolean
+    found = False
+    
+    For j = 1 To wsSource.Cells(1, wsSource.Columns.Count).End(xlToLeft).Column
+        If wsSource.Cells(1, j).Value = "Total In Treatment - Actual" Then
+            found = True
+            MsgBox "Found 'Total In Treatment - Actual' in column " & j, vbInformation
+            Exit For
+        End If
+    Next j
+    
+    If Not found Then
+        MsgBox "'Total In Treatment - Actual' NOT FOUND in the file!", vbExclamation
+        
+        ' Check for similar column names
+        Dim similarFound As String
+        similarFound = "Similar column names found:" & vbCrLf
+        
+        For j = 1 To wsSource.Cells(1, wsSource.Columns.Count).End(xlToLeft).Column
+            If InStr(1, wsSource.Cells(1, j).Value, "Treatment", vbTextCompare) > 0 Or _
+               InStr(1, wsSource.Cells(1, j).Value, "Actual", vbTextCompare) > 0 Then
+                similarFound = similarFound & vbCrLf & "- [" & wsSource.Cells(1, j).Value & "]"
+            End If
+        Next j
+        
+        MsgBox similarFound, vbInformation
+    End If
+    
+    wbSource.Close SaveChanges:=False
+End Sub
