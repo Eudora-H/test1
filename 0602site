@@ -1,0 +1,235 @@
+Sub ProcessSiteMilestoneRobust()
+    Dim wbSource As Workbook
+    Dim wsSource As Worksheet
+    Dim wbNew As Workbook
+    Dim wsNew As Worksheet
+    Dim filePath As Variant
+    Dim savePath As Variant
+    Dim lastRow As Long
+    Dim lastCol As Long
+    Dim i As Long, j As Long
+    Dim currentDate As String
+    Dim requiredColumns As Variant
+    Dim fileName As String
+    
+    ' Define required columns
+    requiredColumns = Array("Trial Code", "Country", "Site Name", "Site Status", _
+                           "Total Completed - Actual", "Total Screen Failed - Actual", _
+                           "Total Enrolled - Planned", "Total Enrolled - Actual", _
+                           "Total Screened - Actual", "Total In Active Enrollment - Actual", _
+                           "Total In Treatment - Actual")
+    
+    Application.ScreenUpdating = False
+    
+    ' File selection
+    filePath = Application.GetOpenFilename( _
+        FileFilter:="Excel Files (*.xls*), *.xls*", _
+        Title:="Please select Site Milestone file")
+    
+    If filePath = False Then
+        MsgBox "No file selected. Operation cancelled.", vbInformation
+        Exit Sub
+    End If
+    
+    ' Open the selected file
+    Set wbSource = Workbooks.Open(filePath)
+    Set wsSource = wbSource.ActiveSheet
+    
+    ' Create new workbook
+    Set wbNew = Workbooks.Add
+    Set wsNew = wbNew.ActiveSheet
+    wsNew.Name = "Cleaned_Data"
+    
+    ' Copy all data
+    wsSource.UsedRange.Copy
+    wsNew.Range("A1").PasteSpecial xlPasteAll
+    Application.CutCopyMode = False
+    
+    ' CRITICAL: Clean all headers to remove hidden characters
+    lastCol = wsNew.Cells(1, wsNew.Columns.Count).End(xlToLeft).Column
+    For j = 1 To lastCol
+        wsNew.Cells(1, j).Value = CleanHeaderText(wsNew.Cells(1, j).Value)
+    Next j
+    
+    ' Find and remove "Applied filters:" rows
+    Dim trialCodeCol As Integer
+    trialCodeCol = 0
+    
+    For j = 1 To lastCol
+        If CompareHeaders(wsNew.Cells(1, j).Value, "Trial Code") Then
+            trialCodeCol = j
+            Exit For
+        End If
+    Next j
+    
+    If trialCodeCol > 0 Then
+        lastRow = wsNew.Cells(wsNew.Rows.Count, trialCodeCol).End(xlUp).Row
+        
+        For i = lastRow To 2 Step -1
+            If InStr(1, wsNew.Cells(i, trialCodeCol).Value, "Applied filters:", vbTextCompare) > 0 Then
+                wsNew.Rows(i).Delete
+            End If
+        Next i
+    End If
+    
+    ' Add current date column
+    currentDate = Format(Date, "yyyy-mm-dd")
+    wsNew.Columns(1).Insert Shift:=xlToRight
+    wsNew.Cells(1, 1).Value = "cur_month"
+    
+    lastRow = wsNew.Cells(wsNew.Rows.Count, 2).End(xlUp).Row
+    For i = 2 To lastRow
+        wsNew.Cells(i, 1).Value = currentDate
+    Next i
+    
+    ' Delete non-required columns
+    Dim columnsToKeep As Variant
+    ReDim columnsToKeep(0 To UBound(requiredColumns) + 1)
+    columnsToKeep(0) = "cur_month"
+    For i = 0 To UBound(requiredColumns)
+        columnsToKeep(i + 1) = requiredColumns(i)
+    Next i
+    
+    ' Track results
+    Dim foundColumns As String
+    Dim missingColumns As String
+    foundColumns = "Found columns:" & vbCrLf
+    missingColumns = "Missing columns:" & vbCrLf
+    
+    ' First check which required columns exist
+    Dim requiredFound() As Boolean
+    ReDim requiredFound(0 To UBound(requiredColumns))
+    
+    For i = 0 To UBound(requiredColumns)
+        requiredFound(i) = False
+        For j = 1 To wsNew.Cells(1, wsNew.Columns.Count).End(xlToLeft).Column
+            If CompareHeaders(wsNew.Cells(1, j).Value, requiredColumns(i)) Then
+                requiredFound(i) = True
+                foundColumns = foundColumns & "- " & requiredColumns(i) & vbCrLf
+                Exit For
+            End If
+        Next j
+        
+        If Not requiredFound(i) Then
+            missingColumns = missingColumns & "- " & requiredColumns(i) & vbCrLf
+        End If
+    Next i
+    
+    ' Delete non-required columns (from right to left)
+    For j = wsNew.Cells(1, wsNew.Columns.Count).End(xlToLeft).Column To 1 Step -1
+        Dim keepColumn As Boolean
+        keepColumn = False
+        
+        For i = 0 To UBound(columnsToKeep)
+            If CompareHeaders(wsNew.Cells(1, j).Value, columnsToKeep(i)) Then
+                keepColumn = True
+                Exit For
+            End If
+        Next i
+        
+        If Not keepColumn Then
+            wsNew.Columns(j).Delete
+        End If
+    Next j
+    
+    ' Auto-fit columns
+    wsNew.Cells.EntireColumn.AutoFit
+    
+    ' Save file
+    fileName = Mid(filePath, InStrRev(filePath, "\") + 1)
+    fileName = Left(fileName, InStrRev(fileName, ".") - 1)
+    
+    savePath = Application.GetSaveAsFilename( _
+        InitialFileName:=fileName & "_Cleaned_" & Format(Now, "yyyymmdd_hhmmss"), _
+        FileFilter:="Excel Workbook (*.xlsx), *.xlsx", _
+        Title:="Save cleaned file as...")
+    
+    If savePath <> False Then
+        wbNew.SaveAs Filename:=savePath, FileFormat:=xlOpenXMLWorkbook
+        MsgBox "Processing completed!" & vbCrLf & vbCrLf & _
+               foundColumns & vbCrLf & _
+               missingColumns & vbCrLf & vbCrLf & _
+               "Note: Hidden characters in column headers have been automatically cleaned.", _
+               vbInformation, "Process Complete"
+    End If
+    
+    wbSource.Close SaveChanges:=False
+    Application.ScreenUpdating = True
+    
+End Sub
+
+' Function to clean header text
+Function CleanHeaderText(ByVal txt As String) As String
+    Dim result As String
+    Dim i As Integer
+    
+    result = ""
+    
+    ' Keep only printable ASCII characters and convert non-breaking spaces
+    For i = 1 To Len(txt)
+        If Asc(Mid(txt, i, 1)) >= 32 And Asc(Mid(txt, i, 1)) <= 126 Then
+            result = result & Mid(txt, i, 1)
+        ElseIf Asc(Mid(txt, i, 1)) = 160 Then
+            result = result & " " ' Convert non-breaking space to regular space
+        End If
+    Next i
+    
+    ' Clean up multiple spaces and trim
+    result = Application.WorksheetFunction.Trim(result)
+    
+    CleanHeaderText = result
+End Function
+
+' Function to compare headers (ignoring hidden characters and extra spaces)
+Function CompareHeaders(ByVal header1 As String, ByVal header2 As String) As Boolean
+    Dim clean1 As String
+    Dim clean2 As String
+    
+    clean1 = CleanHeaderText(header1)
+    clean2 = CleanHeaderText(header2)
+    
+    ' Case-insensitive comparison
+    CompareHeaders = (StrComp(clean1, clean2, vbTextCompare) = 0)
+End Function
+
+' Alternative: Fuzzy matching for headers
+Function FuzzyMatchHeaders(ByVal header1 As String, ByVal header2 As String, Optional threshold As Double = 0.9) As Boolean
+    Dim clean1 As String
+    Dim clean2 As String
+    Dim similarity As Double
+    
+    clean1 = CleanHeaderText(header1)
+    clean2 = CleanHeaderText(header2)
+    
+    ' Simple similarity calculation
+    similarity = CalculateSimilarity(clean1, clean2)
+    
+    FuzzyMatchHeaders = (similarity >= threshold)
+End Function
+
+' Calculate similarity between two strings (0 to 1)
+Function CalculateSimilarity(ByVal str1 As String, ByVal str2 As String) As Double
+    Dim matches As Integer
+    Dim totalChars As Integer
+    Dim i As Integer
+    
+    str1 = LCase(str1)
+    str2 = LCase(str2)
+    
+    If str1 = str2 Then
+        CalculateSimilarity = 1
+        Exit Function
+    End If
+    
+    ' Count matching characters at same positions
+    matches = 0
+    totalChars = Application.WorksheetFunction.Max(Len(str1), Len(str2))
+    
+    For i = 1 To Application.WorksheetFunction.Min(Len(str1), Len(str2))
+        If Mid(str1, i, 1) = Mid(str2, i, 1) Then
+            matches = matches + 1
+        End If
+    Next i
+    
+    CalculateSimilarity = matches / totalChars
+End Function
