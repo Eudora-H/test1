@@ -1,9 +1,20 @@
 Sub DebugCheckColumns()
     Dim wbSource As Workbook
     Dim wsSource As Worksheet
+    Dim wbDebug As Workbook
+    Dim wsDebug As Worksheet
     Dim filePath As Variant
     Dim j As Long
-    Dim columnList As String
+    Dim row As Long
+    Dim requiredColumns As Variant
+    Dim i As Long
+    
+    ' Define required columns for comparison
+    requiredColumns = Array("Trial Code", "Country", "Site Name", "Site Status", _
+                           "Total Completed - Actual", "Total Screen Failed - Actual", _
+                           "Total Enrolled - Planned", "Total Enrolled - Actual", _
+                           "Total Screened - Actual", "Total In Active Enrollment - Actual", _
+                           "Total In Treatment - Actual")
     
     ' File selection
     filePath = Application.GetOpenFilename( _
@@ -19,44 +30,145 @@ Sub DebugCheckColumns()
     Set wbSource = Workbooks.Open(filePath)
     Set wsSource = wbSource.ActiveSheet
     
-    ' List all column headers
-    columnList = "Column headers in the file:" & vbCrLf & vbCrLf
+    ' Create new workbook for debug info
+    Set wbDebug = Workbooks.Add
+    Set wsDebug = wbDebug.ActiveSheet
+    wsDebug.Name = "Column_Analysis"
     
+    ' Set headers
+    wsDebug.Range("A1").Value = "Column Index"
+    wsDebug.Range("B1").Value = "Column Name in File"
+    wsDebug.Range("C1").Value = "Length"
+    wsDebug.Range("D1").Value = "Has Leading/Trailing Spaces"
+    wsDebug.Range("E1").Value = "Trimmed Version"
+    wsDebug.Range("F1").Value = "Status"
+    
+    ' Format headers
+    With wsDebug.Range("A1:F1")
+        .Font.Bold = True
+        .Interior.Color = RGB(200, 200, 200)
+        .Borders.LineStyle = xlContinuous
+    End With
+    
+    ' List all columns from source file
+    row = 2
     For j = 1 To wsSource.Cells(1, wsSource.Columns.Count).End(xlToLeft).Column
-        columnList = columnList & "Column " & j & ": [" & wsSource.Cells(1, j).Value & "]" & vbCrLf
-    Next j
-    
-    ' Display the column list
-    MsgBox columnList, vbInformation, "All Columns"
-    
-    ' Also check if "Total In Treatment - Actual" exists
-    Dim found As Boolean
-    found = False
-    
-    For j = 1 To wsSource.Cells(1, wsSource.Columns.Count).End(xlToLeft).Column
-        If wsSource.Cells(1, j).Value = "Total In Treatment - Actual" Then
-            found = True
-            MsgBox "Found 'Total In Treatment - Actual' in column " & j, vbInformation
-            Exit For
+        wsDebug.Cells(row, 1).Value = j
+        wsDebug.Cells(row, 2).Value = wsSource.Cells(1, j).Value
+        wsDebug.Cells(row, 3).Value = Len(wsSource.Cells(1, j).Value)
+        
+        ' Check for leading/trailing spaces
+        If Trim(wsSource.Cells(1, j).Value) <> wsSource.Cells(1, j).Value Then
+            wsDebug.Cells(row, 4).Value = "YES"
+            wsDebug.Cells(row, 4).Interior.Color = RGB(255, 200, 200)
+        Else
+            wsDebug.Cells(row, 4).Value = "NO"
         End If
+        
+        wsDebug.Cells(row, 5).Value = Trim(wsSource.Cells(1, j).Value)
+        
+        ' Check if it's a required column
+        Dim isRequired As Boolean
+        isRequired = False
+        For i = 0 To UBound(requiredColumns)
+            If Trim(wsSource.Cells(1, j).Value) = requiredColumns(i) Then
+                isRequired = True
+                Exit For
+            End If
+        Next i
+        
+        If isRequired Then
+            wsDebug.Cells(row, 6).Value = "REQUIRED - FOUND"
+            wsDebug.Cells(row, 6).Interior.Color = RGB(200, 255, 200)
+        End If
+        
+        row = row + 1
     Next j
     
-    If Not found Then
-        MsgBox "'Total In Treatment - Actual' NOT FOUND in the file!", vbExclamation
+    ' Add section for missing required columns
+    row = row + 2
+    wsDebug.Cells(row, 1).Value = "ANALYSIS OF REQUIRED COLUMNS:"
+    wsDebug.Cells(row, 1).Font.Bold = True
+    wsDebug.Range(wsDebug.Cells(row, 1), wsDebug.Cells(row, 6)).Merge
+    wsDebug.Range(wsDebug.Cells(row, 1), wsDebug.Cells(row, 6)).Interior.Color = RGB(255, 255, 200)
+    
+    row = row + 1
+    wsDebug.Cells(row, 1).Value = "Required Column Name"
+    wsDebug.Cells(row, 2).Value = "Status"
+    wsDebug.Cells(row, 3).Value = "Similar Columns Found"
+    wsDebug.Range(wsDebug.Cells(row, 1), wsDebug.Cells(row, 3)).Font.Bold = True
+    
+    ' Check each required column
+    For i = 0 To UBound(requiredColumns)
+        row = row + 1
+        wsDebug.Cells(row, 1).Value = requiredColumns(i)
         
-        ' Check for similar column names
-        Dim similarFound As String
-        similarFound = "Similar column names found:" & vbCrLf
-        
+        ' Check if found
+        Dim found As Boolean
+        found = False
         For j = 1 To wsSource.Cells(1, wsSource.Columns.Count).End(xlToLeft).Column
-            If InStr(1, wsSource.Cells(1, j).Value, "Treatment", vbTextCompare) > 0 Or _
-               InStr(1, wsSource.Cells(1, j).Value, "Actual", vbTextCompare) > 0 Then
-                similarFound = similarFound & vbCrLf & "- [" & wsSource.Cells(1, j).Value & "]"
+            If Trim(wsSource.Cells(1, j).Value) = requiredColumns(i) Then
+                found = True
+                Exit For
             End If
         Next j
         
-        MsgBox similarFound, vbInformation
-    End If
+        If found Then
+            wsDebug.Cells(row, 2).Value = "FOUND"
+            wsDebug.Cells(row, 2).Interior.Color = RGB(200, 255, 200)
+        Else
+            wsDebug.Cells(row, 2).Value = "MISSING"
+            wsDebug.Cells(row, 2).Interior.Color = RGB(255, 200, 200)
+            
+            ' Look for similar columns
+            Dim similarCols As String
+            similarCols = ""
+            
+            ' Extract key words from required column name
+            Dim keywords() As String
+            keywords = Split(requiredColumns(i), " ")
+            
+            For j = 1 To wsSource.Cells(1, wsSource.Columns.Count).End(xlToLeft).Column
+                Dim colName As String
+                colName = wsSource.Cells(1, j).Value
+                
+                ' Check if column contains any of the keywords
+                Dim k As Integer
+                For k = 0 To UBound(keywords)
+                    If Len(keywords(k)) > 2 And InStr(1, colName, keywords(k), vbTextCompare) > 0 Then
+                        If similarCols <> "" Then similarCols = similarCols & "; "
+                        similarCols = similarCols & "[" & colName & "]"
+                        Exit For
+                    End If
+                Next k
+            Next j
+            
+            If similarCols <> "" Then
+                wsDebug.Cells(row, 3).Value = similarCols
+            Else
+                wsDebug.Cells(row, 3).Value = "None found"
+            End If
+        End If
+    Next i
     
+    ' Auto-fit columns
+    wsDebug.Cells.EntireColumn.AutoFit
+    
+    ' Add summary at the top
+    wsDebug.Rows(1).Insert
+    wsDebug.Rows(1).Insert
+    wsDebug.Cells(1, 1).Value = "Source File: " & filePath
+    wsDebug.Cells(2, 1).Value = "Analysis Date: " & Format(Now, "yyyy-mm-dd hh:mm:ss")
+    wsDebug.Range(wsDebug.Cells(1, 1), wsDebug.Cells(1, 6)).Merge
+    wsDebug.Range(wsDebug.Cells(2, 1), wsDebug.Cells(2, 6)).Merge
+    
+    ' Close source file
     wbSource.Close SaveChanges:=False
+    
+    MsgBox "Column analysis complete! Please review the results." & vbCrLf & vbCrLf & _
+           "Pay special attention to:" & vbCrLf & _
+           "- Columns marked as having leading/trailing spaces" & vbCrLf & _
+           "- Required columns marked as MISSING" & vbCrLf & _
+           "- Similar column names that might be the ones you need", vbInformation, "Debug Complete"
+    
 End Sub
