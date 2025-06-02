@@ -1,4 +1,4 @@
-Sub ProcessSiteMilestoneRobust()
+Sub ProcessSiteMilestoneUnicode()
     Dim wbSource As Workbook
     Dim wsSource As Worksheet
     Dim wbNew As Workbook
@@ -45,10 +45,10 @@ Sub ProcessSiteMilestoneRobust()
     wsNew.Range("A1").PasteSpecial xlPasteAll
     Application.CutCopyMode = False
     
-    ' CRITICAL: Clean all headers to remove hidden characters
+    ' CRITICAL: Clean all headers to remove ALL hidden characters including Unicode
     lastCol = wsNew.Cells(1, wsNew.Columns.Count).End(xlToLeft).Column
     For j = 1 To lastCol
-        wsNew.Cells(1, j).Value = CleanHeaderText(wsNew.Cells(1, j).Value)
+        wsNew.Cells(1, j).Value = CleanUnicodeText(wsNew.Cells(1, j).Value)
     Next j
     
     ' Find and remove "Applied filters:" rows
@@ -56,7 +56,7 @@ Sub ProcessSiteMilestoneRobust()
     trialCodeCol = 0
     
     For j = 1 To lastCol
-        If CompareHeaders(wsNew.Cells(1, j).Value, "Trial Code") Then
+        If wsNew.Cells(1, j).Value = "Trial Code" Then
             trialCodeCol = j
             Exit For
         End If
@@ -94,34 +94,16 @@ Sub ProcessSiteMilestoneRobust()
     Dim foundColumns As String
     Dim missingColumns As String
     foundColumns = "Found columns:" & vbCrLf
-    missingColumns = "Missing columns:" & vbCrLf
-    
-    ' First check which required columns exist
-    Dim requiredFound() As Boolean
-    ReDim requiredFound(0 To UBound(requiredColumns))
-    
-    For i = 0 To UBound(requiredColumns)
-        requiredFound(i) = False
-        For j = 1 To wsNew.Cells(1, wsNew.Columns.Count).End(xlToLeft).Column
-            If CompareHeaders(wsNew.Cells(1, j).Value, requiredColumns(i)) Then
-                requiredFound(i) = True
-                foundColumns = foundColumns & "- " & requiredColumns(i) & vbCrLf
-                Exit For
-            End If
-        Next j
-        
-        If Not requiredFound(i) Then
-            missingColumns = missingColumns & "- " & requiredColumns(i) & vbCrLf
-        End If
-    Next i
+    missingColumns = ""
     
     ' Delete non-required columns (from right to left)
     For j = wsNew.Cells(1, wsNew.Columns.Count).End(xlToLeft).Column To 1 Step -1
         Dim keepColumn As Boolean
         keepColumn = False
         
+        ' Check if this is a column to keep
         For i = 0 To UBound(columnsToKeep)
-            If CompareHeaders(wsNew.Cells(1, j).Value, columnsToKeep(i)) Then
+            If wsNew.Cells(1, j).Value = columnsToKeep(i) Then
                 keepColumn = True
                 Exit For
             End If
@@ -131,6 +113,10 @@ Sub ProcessSiteMilestoneRobust()
             wsNew.Columns(j).Delete
         End If
     Next j
+    
+    ' Count final columns
+    Dim finalColCount As Integer
+    finalColCount = wsNew.Cells(1, wsNew.Columns.Count).End(xlToLeft).Column
     
     ' Auto-fit columns
     wsNew.Cells.EntireColumn.AutoFit
@@ -147,9 +133,8 @@ Sub ProcessSiteMilestoneRobust()
     If savePath <> False Then
         wbNew.SaveAs Filename:=savePath, FileFormat:=xlOpenXMLWorkbook
         MsgBox "Processing completed!" & vbCrLf & vbCrLf & _
-               foundColumns & vbCrLf & _
-               missingColumns & vbCrLf & vbCrLf & _
-               "Note: Hidden characters in column headers have been automatically cleaned.", _
+               "Total columns in final file: " & finalColCount & vbCrLf & vbCrLf & _
+               "Note: Unicode hidden characters (like zero-width spaces) have been removed.", _
                vbInformation, "Process Complete"
     End If
     
@@ -158,78 +143,106 @@ Sub ProcessSiteMilestoneRobust()
     
 End Sub
 
-' Function to clean header text
-Function CleanHeaderText(ByVal txt As String) As String
+' Enhanced function to clean Unicode hidden characters
+Function CleanUnicodeText(ByVal txt As String) As String
     Dim result As String
-    Dim i As Integer
+    Dim i As Long
+    Dim charCode As Long
     
     result = ""
     
-    ' Keep only printable ASCII characters and convert non-breaking spaces
+    ' Process each character
     For i = 1 To Len(txt)
-        If Asc(Mid(txt, i, 1)) >= 32 And Asc(Mid(txt, i, 1)) <= 126 Then
-            result = result & Mid(txt, i, 1)
-        ElseIf Asc(Mid(txt, i, 1)) = 160 Then
-            result = result & " " ' Convert non-breaking space to regular space
-        End If
+        ' Get the Unicode value of the character
+        charCode = AscW(Mid(txt, i, 1))
+        
+        ' Keep only visible characters
+        Select Case charCode
+            Case 9 ' Tab - replace with space
+                result = result & " "
+            Case 10, 13 ' Line breaks - skip
+                ' Do nothing
+            Case 32 To 126 ' Normal ASCII printable characters
+                result = result & Mid(txt, i, 1)
+            Case 160 ' Non-breaking space - replace with normal space
+                result = result & " "
+            Case 8203 ' Zero-width space (U+200B) - skip
+                ' Do nothing - this is your problem character!
+            Case 8204, 8205 ' Zero-width non-joiner/joiner - skip
+                ' Do nothing
+            Case 8206 To 8207 ' Left-to-right/right-to-left marks - skip
+                ' Do nothing
+            Case 8232, 8233 ' Line/paragraph separators - skip
+                ' Do nothing
+            Case 8234 To 8238 ' Directional formatting characters - skip
+                ' Do nothing
+            Case 8288 To 8303 ' Various Unicode spaces and formatting - skip
+                ' Do nothing
+            Case 65279 ' Zero-width no-break space (BOM) - skip
+                ' Do nothing
+            Case Is > 126 ' Other Unicode characters
+                ' For other Unicode characters, keep if they're letters/numbers
+                If charCode >= 192 And charCode <= 591 Then ' Extended Latin
+                    result = result & Mid(txt, i, 1)
+                ElseIf charCode >= 880 And charCode <= 1023 Then ' Greek
+                    result = result & Mid(txt, i, 1)
+                ElseIf charCode >= 1024 And charCode <= 1279 Then ' Cyrillic
+                    result = result & Mid(txt, i, 1)
+                ' Skip other Unicode ranges that might contain hidden characters
+                End If
+            Case Else
+                ' Keep the character if not specifically excluded
+                result = result & Mid(txt, i, 1)
+        End Select
     Next i
     
     ' Clean up multiple spaces and trim
     result = Application.WorksheetFunction.Trim(result)
     
-    CleanHeaderText = result
+    CleanUnicodeText = result
 End Function
 
-' Function to compare headers (ignoring hidden characters and extra spaces)
-Function CompareHeaders(ByVal header1 As String, ByVal header2 As String) As Boolean
-    Dim clean1 As String
-    Dim clean2 As String
+' Diagnostic function to show Unicode characters
+Sub ShowUnicodeCharacters()
+    Dim wbSource As Workbook
+    Dim wsSource As Worksheet
+    Dim filePath As Variant
+    Dim j As Long, i As Long
+    Dim cellValue As String
+    Dim msg As String
     
-    clean1 = CleanHeaderText(header1)
-    clean2 = CleanHeaderText(header2)
+    filePath = Application.GetOpenFilename( _
+        FileFilter:="Excel Files (*.xls*), *.xls*", _
+        Title:="Please select Site Milestone file")
     
-    ' Case-insensitive comparison
-    CompareHeaders = (StrComp(clean1, clean2, vbTextCompare) = 0)
-End Function
-
-' Alternative: Fuzzy matching for headers
-Function FuzzyMatchHeaders(ByVal header1 As String, ByVal header2 As String, Optional threshold As Double = 0.9) As Boolean
-    Dim clean1 As String
-    Dim clean2 As String
-    Dim similarity As Double
+    If filePath = False Then Exit Sub
     
-    clean1 = CleanHeaderText(header1)
-    clean2 = CleanHeaderText(header2)
+    Set wbSource = Workbooks.Open(filePath)
+    Set wsSource = wbSource.ActiveSheet
     
-    ' Simple similarity calculation
-    similarity = CalculateSimilarity(clean1, clean2)
-    
-    FuzzyMatchHeaders = (similarity >= threshold)
-End Function
-
-' Calculate similarity between two strings (0 to 1)
-Function CalculateSimilarity(ByVal str1 As String, ByVal str2 As String) As Double
-    Dim matches As Integer
-    Dim totalChars As Integer
-    Dim i As Integer
-    
-    str1 = LCase(str1)
-    str2 = LCase(str2)
-    
-    If str1 = str2 Then
-        CalculateSimilarity = 1
-        Exit Function
-    End If
-    
-    ' Count matching characters at same positions
-    matches = 0
-    totalChars = Application.WorksheetFunction.Max(Len(str1), Len(str2))
-    
-    For i = 1 To Application.WorksheetFunction.Min(Len(str1), Len(str2))
-        If Mid(str1, i, 1) = Mid(str2, i, 1) Then
-            matches = matches + 1
+    ' Check each header
+    For j = 1 To wsSource.Cells(1, wsSource.Columns.Count).End(xlToLeft).Column
+        cellValue = wsSource.Cells(1, j).Value
+        msg = "Column " & j & ": " & vbCrLf
+        
+        ' Check for Unicode characters
+        For i = 1 To Len(cellValue)
+            Dim charCode As Long
+            charCode = AscW(Mid(cellValue, i, 1))
+            
+            If charCode = 8203 Then
+                msg = msg & "[ZERO-WIDTH SPACE U+200B found at position " & i & "]" & vbCrLf
+            ElseIf charCode > 127 Or charCode < 32 Then
+                msg = msg & "[Unicode/Hidden char " & charCode & " at position " & i & "]" & vbCrLf
+            End If
+        Next i
+        
+        ' Show if any special characters found
+        If InStr(msg, "[") > 0 Then
+            MsgBox msg & vbCrLf & "Header text: " & cellValue, vbInformation, "Unicode Characters Found"
         End If
-    Next i
+    Next j
     
-    CalculateSimilarity = matches / totalChars
-End Function
+    wbSource.Close SaveChanges:=False
+    MsgBox "Unicode character check complete!", vbInformation
+End Sub
