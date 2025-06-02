@@ -1,0 +1,17 @@
+Study_Phase = 
+IF(
+    [Site Status] IN {"Active", "Candidate", "Closing", "Initiating", "Qualifying"},
+    SWITCH(
+        TRUE(),
+        ISBLANK([Initiation Visit (Actual Date)]), 
+            "Active: Start-Up (up until SIV actual)",
+        NOT(ISBLANK([Initiation Visit (Actual Date)])) && ISBLANK([LPFV (Actual Date)]), 
+            "Active: Conduct Recruiting (FSIV actual - LPFV actual)",
+        NOT(ISBLANK([LPFV (Actual Date)])) && ISBLANK([LPLV (Actual Date)]), 
+            "Active: Conduct Maintenance (LPFV actual - LPLV actual)",
+        NOT(ISBLANK([LPLV (Actual Date)])) && NOT(ISBLANK([Site Close Out Visit Date (Actual Date)])), 
+            "Active: Close-Out (LPLV actual - EOT)",
+        BLANK()
+    ),
+    BLANK()
+)
