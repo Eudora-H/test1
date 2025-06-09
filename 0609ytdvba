@@ -1,166 +1,81 @@
-Sub ProcessExcelFile()
+Sub TestDateFilling()
     Dim wb As Workbook
     Dim ws As Worksheet
     Dim filePath As Variant
     Dim lastRow As Long
-    Dim lastCol As Long
-    Dim i As Long, j As Long
+    Dim i As Long
     Dim currentDate As String
-    Dim columnsToKeep As Variant
-    Dim tempCol As Long
     
-    ' 1. File selection dialog
+    ' File selection
     filePath = Application.GetOpenFilename( _
         FileFilter:="Excel Files (*.xls; *.xlsx; *.xlsm), *.xls; *.xlsx; *.xlsm", _
         Title:="Please select file", _
         MultiSelect:=False)
     
-    ' Check if user cancelled
-    If filePath = False Then
-        MsgBox "No file selected. Operation cancelled.", vbInformation
-        Exit Sub
-    End If
+    If filePath = False Then Exit Sub
     
-    ' Open the selected workbook
+    ' Open workbook
     Set wb = Workbooks.Open(filePath)
-    Set ws = wb.Worksheets(1) ' Assuming data is in the first sheet
+    Set ws = wb.Worksheets(1)
     
-    ' Turn off screen updating for better performance
-    Application.ScreenUpdating = False
-    
-    ' Find last row BEFORE inserting new column
-    ' Using multiple methods to ensure we get the correct last row
-    Dim lastRowMethod1 As Long, lastRowMethod2 As Long
-    lastRowMethod1 = ws.UsedRange.Rows.Count
-    
-    ' Alternative method using Find
-    On Error Resume Next
-    lastRowMethod2 = ws.Cells.Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
-    On Error GoTo 0
-    
-    ' Use the maximum of both methods
-    lastRow = Application.Max(lastRowMethod1, lastRowMethod2)
-    
-    ' Ensure we have data
-    If lastRow <= 1 Then
-        MsgBox "No data found in the file (only headers or empty file).", vbExclamation
-        wb.Close SaveChanges:=False
-        Exit Sub
-    End If
-    
-    ' 2. Create current date and insert as first column
+    ' Get the current date
     currentDate = Format(Date, "yyyy-mm-dd")
     
-    ' Insert new column at position A
-    ws.Columns("A:A").Insert Shift:=xlToRight
+    ' Method 1: Find last row with data in any column
+    lastRow = ws.Cells.Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
+    MsgBox "Last row with data: " & lastRow
+    
+    ' Insert column
+    ws.Columns("A:A").Insert
     ws.Range("A1").Value = "as_of_date"
     
-    ' ALTERNATIVE APPROACH: Fill the date column using range assignment
-    Dim dataRange As Range
-    Set dataRange = ws.Range("A2:A" & lastRow)
+    ' Try different methods to fill dates
+    MsgBox "Trying Method 1: Direct value assignment"
+    For i = 2 To lastRow
+        ws.Cells(i, 1).Value = currentDate
+    Next i
     
-    ' Method 1: Direct value assignment to range
-    dataRange.Value = currentDate
+    ' Check results
+    MsgBox "Method 1 Results:" & vbCrLf & _
+           "A2: " & ws.Range("A2").Value & vbCrLf & _
+           "A3: " & ws.Range("A3").Value
     
-    ' If Method 1 doesn't work, uncomment Method 2 below:
-    ' Method 2: Using array assignment
-    ' Dim dateArray() As Variant
-    ' ReDim dateArray(1 To lastRow - 1, 1 To 1)
-    ' For i = 1 To lastRow - 1
-    '     dateArray(i, 1) = currentDate
-    ' Next i
-    ' dataRange.Value = dateArray
-    
-    ' Verify dates were filled
+    ' If still blank, try Method 2
     If ws.Range("A2").Value = "" Then
-        MsgBox "Warning: Dates were not filled properly. Trying alternative method.", vbInformation
-        ' Fallback to loop method
+        MsgBox "Method 1 failed. Trying Method 2: Using DateValue"
         For i = 2 To lastRow
-            ws.Cells(i, 1).Value = currentDate
+            ws.Cells(i, 1).Value = DateValue(Now)
             ws.Cells(i, 1).NumberFormat = "yyyy-mm-dd"
         Next i
+        
+        MsgBox "Method 2 Results:" & vbCrLf & _
+               "A2: " & ws.Range("A2").Value & vbCrLf & _
+               "A3: " & ws.Range("A3").Value
     End If
     
-    ' 3. Remove rows containing specific text
-    Dim textsToRemove As Variant
-    textsToRemove = Array("Selections:", "Title:", "Subtitle:", "Totals")
+    ' If still blank, try Method 3
+    If ws.Range("A2").Value = "" Then
+        MsgBox "Method 2 failed. Trying Method 3: Formula approach"
+        ws.Range("A2").Formula = "=""" & currentDate & """"
+        ws.Range("A2").Copy
+        ws.Range("A3:A" & lastRow).PasteSpecial xlPasteFormulas
+        ' Convert formulas to values
+        ws.Range("A2:A" & lastRow).Copy
+        ws.Range("A2:A" & lastRow).PasteSpecial xlPasteValues
+        Application.CutCopyMode = False
+        
+        MsgBox "Method 3 Results:" & vbCrLf & _
+               "A2: " & ws.Range("A2").Value & vbCrLf & _
+               "A3: " & ws.Range("A3").Value
+    End If
     
-    ' Update lastRow after filling dates (using column A now)
-    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+    ' Final check - count non-empty cells
+    Dim filledCount As Long
+    filledCount = Application.CountA(ws.Range("A2:A" & lastRow))
     
-    ' Loop through rows from bottom to top to avoid skipping rows
-    Dim txt As Variant
-    For i = lastRow To 1 Step -1
-        For j = 1 To ws.Cells(i, ws.Columns.Count).End(xlToLeft).Column
-            For Each txt In textsToRemove
-                If InStr(1, ws.Cells(i, j).Value, txt, vbTextCompare) > 0 Then
-                    ws.Rows(i).Delete
-                    Exit For
-                End If
-            Next txt
-        Next j
-    Next i
-    
-    ' 4. Select and keep only specified columns
-    columnsToKeep = Array("as_of_date", "Study Code", "Country Status", "Hub", _
-                         "Country", "Global SSO Priority", "Global SSO Priority Type", _
-                         "Country YTD New Pts")
-    
-    ' Find column positions
-    Dim colPositions() As Long
-    ReDim colPositions(UBound(columnsToKeep))
-    
-    lastCol = ws.Cells(1, ws.Columns.Count).End(xlToLeft).Column
-    
-    For i = 0 To UBound(columnsToKeep)
-        colPositions(i) = 0
-        For j = 1 To lastCol
-            If Trim(ws.Cells(1, j).Value) = columnsToKeep(i) Then
-                colPositions(i) = j
-                Exit For
-            End If
-        Next j
-    Next i
-    
-    ' Create a new sheet to store filtered columns
-    Dim newWs As Worksheet
-    Set newWs = wb.Worksheets.Add(After:=ws)
-    newWs.Name = "Processed_Data"
-    
-    ' Copy selected columns to new sheet
-    tempCol = 1
-    For i = 0 To UBound(columnsToKeep)
-        If colPositions(i) > 0 Then
-            ws.Columns(colPositions(i)).Copy
-            newWs.Columns(tempCol).PasteSpecial xlPasteAll
-            tempCol = tempCol + 1
-        Else
-            ' If column not found, add empty column with header
-            newWs.Cells(1, tempCol).Value = columnsToKeep(i)
-            tempCol = tempCol + 1
-        End If
-    Next i
-    
-    ' Clear clipboard
-    Application.CutCopyMode = False
-    
-    ' Delete original sheet (optional - comment out if you want to keep it)
-    Application.DisplayAlerts = False
-    ws.Delete
-    Application.DisplayAlerts = True
-    
-    ' Auto-fit columns
-    newWs.Columns.AutoFit
-    
-    ' Turn screen updating back on
-    Application.ScreenUpdating = True
-    
-    ' Final verification
-    Dim dateColumnCheck As Long
-    dateColumnCheck = Application.CountA(newWs.Range("A:A")) - 1 ' Subtract header
-    
-    MsgBox "File processing completed!" & vbCrLf & _
-           "Total rows processed: " & dateColumnCheck & vbCrLf & _
-           "Date column populated: " & IIf(dateColumnCheck > 0, "Yes", "No"), vbInformation
+    MsgBox "Final Summary:" & vbCrLf & _
+           "Total rows to fill: " & (lastRow - 1) & vbCrLf & _
+           "Actually filled: " & filledCount & vbCrLf & _
+           "Current date used: " & currentDate
     
 End Sub
