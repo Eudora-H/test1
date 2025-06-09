@@ -28,24 +28,12 @@ Sub ProcessExcelFile()
     ' Turn off screen updating for better performance
     Application.ScreenUpdating = False
     
-    ' 2. Create current date and insert as first column
-    currentDate = Format(Date, "yyyy-mm-dd")
-    
-    ' Insert new column at position A
-    ws.Columns("A:A").Insert Shift:=xlToRight
-    ws.Range("A1").Value = "as_of_date"
-    
-    ' Find last row with data
-    lastRow = ws.Cells(ws.Rows.Count, "B").End(xlUp).Row
-    
-    ' Fill the date column
-    For i = 2 To lastRow
-        ws.Cells(i, 1).Value = currentDate
-    Next i
-    
-    ' 3. Remove rows containing specific text
+    ' 2. FIRST: Remove rows containing specific text (before adding date column)
     Dim textsToRemove As Variant
     textsToRemove = Array("Selections:", "Title:", "Subtitle:", "Totals")
+    
+    ' Find initial last row
+    lastRow = ws.UsedRange.Rows.Count
     
     ' Loop through rows from bottom to top to avoid skipping rows
     For i = lastRow To 1 Step -1
@@ -58,6 +46,21 @@ Sub ProcessExcelFile()
             Next txt
         Next j
     Next i
+    
+    ' 3. NOW add the date column after cleaning
+    currentDate = Format(Date, "yyyy-mm-dd")
+    
+    ' Insert new column at position A
+    ws.Columns("A:A").Insert Shift:=xlToRight
+    ws.Range("A1").Value = "as_of_date"
+    
+    ' Recalculate last row after deletions
+    lastRow = ws.Cells(ws.Rows.Count, "B").End(xlUp).Row
+    
+    ' Fill the date column
+    If lastRow > 1 Then
+        ws.Range("A2:A" & lastRow).Value = currentDate
+    End If
     
     ' 4. Select and keep only specified columns
     columnsToKeep = Array("as_of_date", "Study Code", "Country Status", "Hub", _
@@ -89,8 +92,13 @@ Sub ProcessExcelFile()
     tempCol = 1
     For i = 0 To UBound(columnsToKeep)
         If colPositions(i) > 0 Then
-            ws.Columns(colPositions(i)).Copy
-            newWs.Columns(tempCol).PasteSpecial xlPasteAll
+            ' Get the actual last row with data for this column
+            Dim colLastRow As Long
+            colLastRow = ws.Cells(ws.Rows.Count, colPositions(i)).End(xlUp).Row
+            
+            ' Copy the entire column range with data
+            ws.Range(ws.Cells(1, colPositions(i)), ws.Cells(colLastRow, colPositions(i))).Copy
+            newWs.Cells(1, tempCol).PasteSpecial xlPasteAll
             tempCol = tempCol + 1
         Else
             ' If column not found, add empty column with header
@@ -113,6 +121,10 @@ Sub ProcessExcelFile()
     ' Turn screen updating back on
     Application.ScreenUpdating = True
     
-    MsgBox "File processing completed successfully!", vbInformation
+    ' Display summary
+    Dim dataRows As Long
+    dataRows = newWs.Cells(newWs.Rows.Count, "A").End(xlUp).Row - 1
+    MsgBox "File processing completed successfully!" & vbCrLf & _
+           "Total data rows: " & dataRows, vbInformation
     
 End Sub
