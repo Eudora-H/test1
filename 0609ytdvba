@@ -43,6 +43,28 @@ Sub ProcessDataFile()
     ' Step 3: Remove rows containing specific text
     Dim deleteRows As Collection
     Set deleteRows = New Collection
+    
+    ' Search for rows to delete
+    For i = lastRow To 1 Step -1
+        Dim rowText As String
+        Dim j As Long
+        
+        ' Check all cells in the row for the specified text
+        For j = 1 To ws.Cells(i, ws.Columns.Count).End(xlToLeft).Column
+            rowText = CStr(ws.Cells(i, j).Value)
+            If InStr(rowText, "Selections:") > 0 Or _
+               InStr(rowText, "Title:") > 0 Or _
+               InStr(rowText, "Subtitle:") > 0 Then
+                ws.Rows(i).Delete
+                Exit For
+            End If
+        Next j
+    Next i
+    
+    ' Update lastRow after deletion
+    lastRow = ws.Cells(ws.Rows.Count, "B").End(xlUp).Row
+    
+    ' Additional step: Remove rows where "Study Code" contains "Totals"
     Dim studyCodeCol As Long
     studyCodeCol = 0
     
@@ -54,38 +76,16 @@ Sub ProcessDataFile()
         End If
     Next j
     
-    ' Search for rows to delete
-    For i = lastRow To 1 Step -1
-        Dim rowText As String
-        Dim j As Long
-        Dim deleteRow As Boolean
-        deleteRow = False
-        
-        ' Check all cells in the row for the specified text
-        For j = 1 To ws.Cells(i, ws.Columns.Count).End(xlToLeft).Column
-            rowText = CStr(ws.Cells(i, j).Value)
-            If InStr(rowText, "Selections:") > 0 Or _
-               InStr(rowText, "Title:") > 0 Or _
-               InStr(rowText, "Subtitle:") > 0 Then
-                deleteRow = True
-                Exit For
+    ' If Study Code column found, remove rows containing "Totals"
+    If studyCodeCol > 0 Then
+        For i = lastRow To 2 Step -1 ' Start from row 2 to skip header
+            If InStr(1, CStr(ws.Cells(i, studyCodeCol).Value), "Totals", vbTextCompare) > 0 Then
+                ws.Rows(i).Delete
             End If
-        Next j
-        
-        ' Also check if Study Code column contains "Totals"
-        If studyCodeCol > 0 And Not deleteRow Then
-            If InStr(CStr(ws.Cells(i, studyCodeCol).Value), "Totals") > 0 Then
-                deleteRow = True
-            End If
-        End If
-        
-        ' Delete the row if flagged
-        If deleteRow Then
-            ws.Rows(i).Delete
-        End If
-    Next i
+        Next i
+    End If
     
-    ' Update lastRow after deletion
+    ' Update lastRow again after removing Totals
     lastRow = ws.Cells(ws.Rows.Count, "B").End(xlUp).Row
     
     ' Step 4: Create new workbook with selected columns
