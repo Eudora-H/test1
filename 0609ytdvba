@@ -1,131 +1,144 @@
 Sub ProcessDataFile()
     Dim fd As FileDialog
     Dim selectedFile As String
-    Dim sourceWB As Workbook
-    Dim sourceWS As Worksheet
-    Dim newWB As Workbook
-    Dim newWS As Worksheet
+    Dim wb As Workbook
+    Dim ws As Worksheet
     Dim lastRow As Long
     Dim lastCol As Long
     Dim i As Long
-    Dim targetColumns As Variant
+    Dim j As Long
     Dim colHeaders As Variant
-    Dim colIndexes As Variant
-    Dim j As Integer
-    Dim foundCol As Integer
-    Dim newFileName As String
+    Dim targetCols As Variant
+    Dim colIndices As Variant
+    Dim newWb As Workbook
+    Dim newWs As Worksheet
     Dim currentDate As String
+    Dim fileName As String
+    Dim savePath As String
     
-    ' Define the columns we want to keep
-    targetColumns = Array("Study Code", "Country Status", "Hub", "Country", _
-                         "Global SSO Priority", "Global SSO Priority Type", "Country YTD New Pts")
+    ' Initialize target columns array
+    targetCols = Array("Study Code", "Country Status", "Hub", "Country", _
+                      "Global SSO Priority", "Global SSO Priority Type", "Country YTD New Pts")
     
-    ' Step 1: File selection dialog
+    ' Step 1: File picker dialog with instruction
     Set fd = Application.FileDialog(msoFileDialogFilePicker)
     With fd
         .Title = "Please select file"
-        .Filters.Clear
-        .Filters.Add "Excel Files", "*.xlsx; *.xls; *.xlsm"
         .AllowMultiSelect = False
-        
-        If .Show = -1 Then
-            selectedFile = .SelectedItems(1)
-        Else
-            MsgBox "No file selected. Process cancelled."
-            Exit Sub
-        End If
+        .Filters.Clear
+        .Filters.Add "Excel Files", "*.xlsx;*.xls;*.xlsm"
+        .Filters.Add "All Files", "*.*"
     End With
+    
+    ' Show dialog and get selected file
+    If fd.Show = -1 Then
+        selectedFile = fd.SelectedItems(1)
+    Else
+        MsgBox "No file selected. Operation cancelled."
+        Exit Sub
+    End If
     
     ' Open the selected file
     Application.ScreenUpdating = False
-    Set sourceWB = Workbooks.Open(selectedFile)
-    Set sourceWS = sourceWB.Sheets(1) ' Assuming data is in first sheet
+    Application.DisplayAlerts = False
     
-    ' Step 2: Remove unwanted rows
-    lastRow = sourceWS.Cells(sourceWS.Rows.Count, 1).End(xlUp).Row
+    Set wb = Workbooks.Open(selectedFile)
+    Set ws = wb.Worksheets(1) ' Assuming data is in first sheet
     
-    ' Loop through rows from bottom to top to avoid index shifting when deleting
+    ' Find last row and column
+    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    lastCol = ws.Cells(1, ws.Columns.Count).End(xlToLeft).Column
+    
+    ' Step 2: Remove rows containing "Selections:", "Title:", "Subtitle:" in column A
     For i = lastRow To 1 Step -1
-        If Not IsEmpty(sourceWS.Cells(i, 1).Value) Then
-            If InStr(1, sourceWS.Cells(i, 1).Value, "Selections:", vbTextCompare) > 0 Or _
-               InStr(1, sourceWS.Cells(i, 1).Value, "Title:", vbTextCompare) > 0 Or _
-               InStr(1, sourceWS.Cells(i, 1).Value, "Subtitle:", vbTextCompare) > 0 Or _
-               InStr(1, sourceWS.Cells(i, 1).Value, "Totals", vbTextCompare) > 0 Then
-                sourceWS.Rows(i).Delete
-            End If
+        If InStr(1, ws.Cells(i, 1).Value, "Selections:", vbTextCompare) > 0 Or _
+           InStr(1, ws.Cells(i, 1).Value, "Title:", vbTextCompare) > 0 Or _
+           InStr(1, ws.Cells(i, 1).Value, "Subtitle:", vbTextCompare) > 0 Then
+            ws.Rows(i).Delete
         End If
     Next i
     
-    ' Refresh last row after deletions
-    lastRow = sourceWS.Cells(sourceWS.Rows.Count, 1).End(xlUp).Row
-    lastCol = sourceWS.Cells(1, sourceWS.Columns.Count).End(xlToLeft).Column
+    ' Update last row after deletion
+    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
     
-    ' Step 3: Find column indexes for target columns
-    ReDim colIndexes(UBound(targetColumns))
+    ' Step 3: Find target columns and their indices
+    ReDim colIndices(0 To UBound(targetCols))
     
-    ' Get headers from row 1
-    For j = 0 To UBound(targetColumns)
-        foundCol = 0
-        For i = 1 To lastCol
-            If Trim(sourceWS.Cells(1, i).Value) = targetColumns(j) Then
-                foundCol = i
+    ' Find header row (assuming it's row 1 after cleanup)
+    For j = 1 To lastCol
+        For i = 0 To UBound(targetCols)
+            If Trim(ws.Cells(1, j).Value) = targetCols(i) Then
+                colIndices(i) = j
                 Exit For
             End If
         Next i
-        colIndexes(j) = foundCol
-        
-        If foundCol = 0 Then
-            MsgBox "Column '" & targetColumns(j) & "' not found!"
-        End If
     Next j
     
-    ' Step 4: Create new workbook and copy selected data
-    Set newWB = Workbooks.Add
-    Set newWS = newWB.Sheets(1)
+    ' Check if all required columns were found
+    For i = 0 To UBound(targetCols)
+        If colIndices(i) = 0 Then
+            MsgBox "Column '" & targetCols(i) & "' not found in the file."
+            wb.Close False
+            Exit Sub
+        End If
+    Next i
     
-    ' Step 5: Add date column header first
+    ' Step 4: Remove rows containing "Totals" in Study Code column
+    Dim studyCodeCol As Long
+    studyCodeCol = colIndices(0) ' Study Code is first in our array
+    
+    For i = lastRow To 2 Step -1 ' Start from row 2 to preserve headers
+        If InStr(1, ws.Cells(i, studyCodeCol).Value, "Totals", vbTextCompare) > 0 Then
+            ws.Rows(i).Delete
+        End If
+    Next i
+    
+    ' Update last row after deletion
+    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    
+    ' Step 5 & 6: Create new workbook with cleaned data and date column
+    Set newWb = Workbooks.Add
+    Set newWs = newWb.Worksheets(1)
+    
+    ' Step 5: Add date column header and format date
     currentDate = Format(Date, "yyyy-mm-dd")
-    newWS.Cells(1, 1).Value = "as_ofdate"
+    newWs.Cells(1, 1).Value = "as_ofdate"
     
-    ' Add other column headers
-    For j = 0 To UBound(targetColumns)
-        If colIndexes(j) > 0 Then
-            newWS.Cells(1, j + 2).Value = targetColumns(j)
-        End If
-    Next j
+    ' Add target column headers starting from column 2
+    For i = 0 To UBound(targetCols)
+        newWs.Cells(1, i + 2).Value = targetCols(i)
+    Next i
     
-    ' Copy data
+    ' Copy data rows
     For i = 2 To lastRow
-        ' Fill date column for each row
-        newWS.Cells(i, 1).Value = currentDate
+        ' Add current date to first column
+        newWs.Cells(i, 1).Value = currentDate
         
         ' Copy target column data
-        For j = 0 To UBound(targetColumns)
-            If colIndexes(j) > 0 Then
-                newWS.Cells(i, j + 2).Value = sourceWS.Cells(i, colIndexes(j)).Value
-            End If
+        For j = 0 To UBound(targetCols)
+            newWs.Cells(i, j + 2).Value = ws.Cells(i, colIndices(j)).Value
         Next j
     Next i
     
     ' Auto-fit columns
-    newWS.Columns.AutoFit
+    newWs.Columns.AutoFit
     
-    ' Step 6: Save with specified naming convention
-    newFileName = "Dataset for calculating YTD new pts " & Format(Now, "yyyymmdd_hhmmss")
+    ' Step 6: Save with specified filename
+    fileName = "Dataset for calculating YTD new pts " & Format(Now, "yyyymmdd_hhmmss")
+    savePath = Application.GetSaveAsFilename(fileName, "Excel Workbook (*.xlsx), *.xlsx")
     
-    ' Get the directory of the source file for saving
-    Dim savePath As String
-    savePath = Left(selectedFile, InStrRev(selectedFile, "\")) & newFileName & ".xlsx"
+    If savePath <> "False" Then
+        newWb.SaveAs savePath
+        MsgBox "File processed and saved successfully as: " & vbCrLf & savePath
+    Else
+        MsgBox "File processed but not saved (user cancelled save dialog)."
+    End If
     
-    ' Save the new workbook
-    newWB.SaveAs savePath
-    
-    ' Close source workbook without saving
-    sourceWB.Close SaveChanges:=False
-    
+    ' Clean up
+    wb.Close False
     Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
     
-    MsgBox "Data processing completed successfully!" & vbCrLf & _
-           "New file saved as: " & newFileName & ".xlsx"
+    MsgBox "Data processing completed successfully!"
     
 End Sub
