@@ -1,0 +1,1 @@
+New Column = [Column A] & "_" & IF(ISERROR(FIND(",", [Column B])), [Column B], LEFT([Column B], FIND(",", [Column B]) - 1))
