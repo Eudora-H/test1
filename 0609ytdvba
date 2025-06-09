@@ -28,7 +28,7 @@ Sub ProcessExcelFile()
     ' Turn off screen updating for better performance
     Application.ScreenUpdating = False
     
-    ' Find last row BEFORE inserting new column - using the same method that worked
+    ' Find last row BEFORE inserting new column
     On Error Resume Next
     lastRow = ws.Cells.Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
     On Error GoTo 0
@@ -45,23 +45,15 @@ Sub ProcessExcelFile()
     ws.Columns("A:A").Insert Shift:=xlToRight
     ws.Range("A1").Value = "as_of_date"
     
-    ' Fill the date column - using the proven method
+    ' Fill the date column
     For i = 2 To lastRow
         ws.Cells(i, 1).Value = currentDate
     Next i
-    
-    ' Force Excel to recognize the values
-    ws.Calculate
-    DoEvents
     
     ' 3. Remove rows containing specific text
     Dim textsToRemove As Variant
     Dim txt As Variant
     textsToRemove = Array("Selections:", "Title:", "Subtitle:", "Totals")
-    
-    ' IMPORTANT: Update lastRow using column B (which now has data) instead of A
-    ' This prevents losing reference if date column has issues
-    lastRow = ws.Cells(ws.Rows.Count, "B").End(xlUp).Row
     
     ' Loop through rows from bottom to top to avoid skipping rows
     For i = lastRow To 1 Step -1
@@ -80,6 +72,10 @@ Sub ProcessExcelFile()
 NextRow:
     Next i
     
+    ' CRITICAL: Recalculate lastRow after deletions for accurate data range
+    lastRow = ws.Cells.Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
+    lastCol = ws.Cells.Find("*", SearchOrder:=xlByColumns, SearchDirection:=xlPrevious).Column
+    
     ' 4. Select and keep only specified columns
     columnsToKeep = Array("as_of_date", "Study Code", "Country Status", "Hub", _
                          "Country", "Global SSO Priority", "Global SSO Priority Type", _
@@ -89,48 +85,60 @@ NextRow:
     Dim colPositions() As Long
     ReDim colPositions(UBound(columnsToKeep))
     
-    ' Update lastCol and lastRow after deletions
-    lastCol = ws.Cells(1, ws.Columns.Count).End(xlToLeft).Column
-    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
-    
     ' Initialize all positions to 0
     For i = 0 To UBound(columnsToKeep)
         colPositions(i) = 0
     Next i
     
-    ' Find each column
+    ' Find each column - with detailed checking
+    Dim foundColumns As String
+    foundColumns = "Found columns:" & vbCrLf
+    
     For i = 0 To UBound(columnsToKeep)
         For j = 1 To lastCol
-            If Trim(ws.Cells(1, j).Value) = Trim(columnsToKeep(i)) Then
+            ' Exact match comparison (trim both sides)
+            If Trim(UCase(ws.Cells(1, j).Value)) = Trim(UCase(columnsToKeep(i))) Then
                 colPositions(i) = j
+                foundColumns = foundColumns & columnsToKeep(i) & " at column " & j & vbCrLf
                 Exit For
             End If
         Next j
+        If colPositions(i) = 0 Then
+            foundColumns = foundColumns & columnsToKeep(i) & " NOT FOUND" & vbCrLf
+        End If
     Next i
+    
+    ' Show what was found (comment out after testing)
+    MsgBox foundColumns & vbCrLf & "Last row: " & lastRow
     
     ' Create a new sheet to store filtered columns
     Dim newWs As Worksheet
     Set newWs = wb.Worksheets.Add(After:=ws)
     newWs.Name = "Processed_Data"
     
-    ' Copy selected columns to new sheet
+    ' Copy selected columns to new sheet using a more robust method
     tempCol = 1
     For i = 0 To UBound(columnsToKeep)
         If colPositions(i) > 0 Then
-            ' Use a more robust copy method
-            Dim sourceRange As Range
-            Dim destRange As Range
+            ' Method 1: Copy entire data range at once
+            Dim copyRange As Range
+            Set copyRange = ws.Range(ws.Cells(1, colPositions(i)), ws.Cells(lastRow, colPositions(i)))
             
-            ' Define source range (entire column with data)
-            Set sourceRange = ws.Range(ws.Cells(1, colPositions(i)), ws.Cells(lastRow, colPositions(i)))
+            ' Copy to destination
+            copyRange.Copy Destination:=newWs.Cells(1, tempCol)
             
-            ' Define destination range
-            Set destRange = newWs.Cells(1, tempCol)
+            ' Verify the copy worked
+            Dim copiedValues As Long
+            copiedValues = Application.CountA(newWs.Range(newWs.Cells(2, tempCol), newWs.Cells(lastRow, tempCol)))
             
-            ' Copy values and formats
-            sourceRange.Copy
-            destRange.PasteSpecial xlPasteValues
-            destRange.PasteSpecial xlPasteFormats
+            ' If copy failed, try alternative method
+            If copiedValues = 0 And Application.CountA(copyRange) > 1 Then
+                ' Alternative: Copy values directly
+                Dim r As Long
+                For r = 1 To lastRow
+                    newWs.Cells(r, tempCol).Value = ws.Cells(r, colPositions(i)).Value
+                Next r
+            End If
             
             tempCol = tempCol + 1
         Else
@@ -143,10 +151,22 @@ NextRow:
     ' Clear clipboard
     Application.CutCopyMode = False
     
-    ' Delete original sheet (optional - comment out if you want to keep it)
-    Application.DisplayAlerts = False
-    ws.Delete
-    Application.DisplayAlerts = True
+    ' Verify what was copied
+    Dim verifyMsg As String
+    verifyMsg = "Verification of copied data:" & vbCrLf
+    For i = 1 To tempCol - 1
+        Dim colHeader As String
+        Dim dataCount As Long
+        colHeader = newWs.Cells(1, i).Value
+        dataCount = Application.CountA(newWs.Range(newWs.Cells(2, i), newWs.Cells(lastRow, i)))
+        verifyMsg = verifyMsg & "Column " & i & " (" & colHeader & "): " & dataCount & " values" & vbCrLf
+    Next i
+    MsgBox verifyMsg
+    
+    ' Delete original sheet (optional - comment out if you want to keep it for debugging)
+    ' Application.DisplayAlerts = False
+    ' ws.Delete
+    ' Application.DisplayAlerts = True
     
     ' Auto-fit columns
     newWs.Columns.AutoFit
@@ -154,12 +174,6 @@ NextRow:
     ' Turn screen updating back on
     Application.ScreenUpdating = True
     
-    ' Final verification
-    Dim dateCount As Long
-    dateCount = Application.CountA(newWs.Range("A2:A" & newWs.UsedRange.Rows.Count))
-    
-    MsgBox "File processing completed!" & vbCrLf & _
-           "Total data rows in final sheet: " & (newWs.UsedRange.Rows.Count - 1) & vbCrLf & _
-           "Rows with dates: " & dateCount, vbInformation
+    MsgBox "File processing completed!", vbInformation
     
 End Sub
