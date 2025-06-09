@@ -28,15 +28,24 @@ Sub ProcessExcelFile()
     ' Turn off screen updating for better performance
     Application.ScreenUpdating = False
     
-    ' FIXED: Find last row BEFORE inserting new column
-    lastRow = ws.UsedRange.Rows.Count
-    ' Alternative more robust method:
-    ' lastRow = ws.Cells.Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
+    ' Find last row BEFORE inserting new column
+    ' Using multiple methods to ensure we get the correct last row
+    Dim lastRowMethod1 As Long, lastRowMethod2 As Long
+    lastRowMethod1 = ws.UsedRange.Rows.Count
     
-    ' DEBUG: Check if lastRow is calculated correctly
-    Debug.Print "Last row found: " & lastRow
+    ' Alternative method using Find
+    On Error Resume Next
+    lastRowMethod2 = ws.Cells.Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
+    On Error GoTo 0
+    
+    ' Use the maximum of both methods
+    lastRow = Application.Max(lastRowMethod1, lastRowMethod2)
+    
+    ' Ensure we have data
     If lastRow <= 1 Then
-        MsgBox "Warning: No data rows found in the file!", vbExclamation
+        MsgBox "No data found in the file (only headers or empty file).", vbExclamation
+        wb.Close SaveChanges:=False
+        Exit Sub
     End If
     
     ' 2. Create current date and insert as first column
@@ -46,23 +55,41 @@ Sub ProcessExcelFile()
     ws.Columns("A:A").Insert Shift:=xlToRight
     ws.Range("A1").Value = "as_of_date"
     
-    ' Fill the date column
-    For i = 2 To lastRow
-        ws.Cells(i, 1).Value = currentDate
-    Next i
+    ' ALTERNATIVE APPROACH: Fill the date column using range assignment
+    Dim dataRange As Range
+    Set dataRange = ws.Range("A2:A" & lastRow)
     
-    ' DEBUG: Verify dates were filled
-    Debug.Print "Sample date in row 2: " & ws.Cells(2, 1).Value
-    Debug.Print "Total rows with dates: " & (lastRow - 1)
+    ' Method 1: Direct value assignment to range
+    dataRange.Value = currentDate
+    
+    ' If Method 1 doesn't work, uncomment Method 2 below:
+    ' Method 2: Using array assignment
+    ' Dim dateArray() As Variant
+    ' ReDim dateArray(1 To lastRow - 1, 1 To 1)
+    ' For i = 1 To lastRow - 1
+    '     dateArray(i, 1) = currentDate
+    ' Next i
+    ' dataRange.Value = dateArray
+    
+    ' Verify dates were filled
+    If ws.Range("A2").Value = "" Then
+        MsgBox "Warning: Dates were not filled properly. Trying alternative method.", vbInformation
+        ' Fallback to loop method
+        For i = 2 To lastRow
+            ws.Cells(i, 1).Value = currentDate
+            ws.Cells(i, 1).NumberFormat = "yyyy-mm-dd"
+        Next i
+    End If
     
     ' 3. Remove rows containing specific text
     Dim textsToRemove As Variant
     textsToRemove = Array("Selections:", "Title:", "Subtitle:", "Totals")
     
-    ' Update lastRow after filling dates
+    ' Update lastRow after filling dates (using column A now)
     lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
     
     ' Loop through rows from bottom to top to avoid skipping rows
+    Dim txt As Variant
     For i = lastRow To 1 Step -1
         For j = 1 To ws.Cells(i, ws.Columns.Count).End(xlToLeft).Column
             For Each txt In textsToRemove
@@ -128,6 +155,12 @@ Sub ProcessExcelFile()
     ' Turn screen updating back on
     Application.ScreenUpdating = True
     
-    MsgBox "File processing completed successfully!", vbInformation
+    ' Final verification
+    Dim dateColumnCheck As Long
+    dateColumnCheck = Application.CountA(newWs.Range("A:A")) - 1 ' Subtract header
+    
+    MsgBox "File processing completed!" & vbCrLf & _
+           "Total rows processed: " & dateColumnCheck & vbCrLf & _
+           "Date column populated: " & IIf(dateColumnCheck > 0, "Yes", "No"), vbInformation
     
 End Sub
