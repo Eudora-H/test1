@@ -1,130 +1,148 @@
-Sub ProcessExcelFile()
-    Dim wb As Workbook
-    Dim ws As Worksheet
-    Dim filePath As Variant
+Sub ProcessDataFile()
+    Dim sourceWorkbook As Workbook
+    Dim sourceWorksheet As Worksheet
+    Dim newWorkbook As Workbook
+    Dim newWorksheet As Worksheet
+    Dim fileDialog As FileDialog
+    Dim selectedFile As String
     Dim lastRow As Long
     Dim lastCol As Long
-    Dim i As Long, j As Long
+    Dim i As Long
+    Dim j As Long
+    Dim rowsToDelete As String
+    Dim targetColumns As Variant
+    Dim colPositions As Variant
+    Dim newFileName As String
     Dim currentDate As String
-    Dim columnsToKeep As Variant
-    Dim tempCol As Long
+    Dim timestamp As String
     
-    ' 1. File selection dialog
-    filePath = Application.GetOpenFilename( _
-        FileFilter:="Excel Files (*.xls; *.xlsx; *.xlsm), *.xls; *.xlsx; *.xlsm", _
-        Title:="Please select file", _
-        MultiSelect:=False)
+    ' Step 1: File selection dialog
+    Set fileDialog = Application.FileDialog(msoFileDialogFilePicker)
+    With fileDialog
+        .Title = "Please select file"
+        .Filters.Clear
+        .Filters.Add "Excel Files", "*.xls*"
+        .AllowMultiSelect = False
+        
+        If .Show = -1 Then
+            selectedFile = .SelectedItems(1)
+        Else
+            MsgBox "No file selected. Operation cancelled."
+            Exit Sub
+        End If
+    End With
     
-    ' Check if user cancelled
-    If filePath = False Then
-        MsgBox "No file selected. Operation cancelled.", vbInformation
-        Exit Sub
-    End If
-    
-    ' Open the selected workbook
-    Set wb = Workbooks.Open(filePath)
-    Set ws = wb.Worksheets(1) ' Assuming data is in the first sheet
+    ' Open the selected file
+    Set sourceWorkbook = Workbooks.Open(selectedFile)
+    Set sourceWorksheet = sourceWorkbook.ActiveSheet
     
     ' Turn off screen updating for better performance
     Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
     
-    ' 2. FIRST: Remove rows containing specific text (before adding date column)
-    Dim textsToRemove As Variant
-    textsToRemove = Array("Selections:", "Title:", "Subtitle:", "Totals")
+    ' Get the data range
+    lastRow = sourceWorksheet.Cells(sourceWorksheet.Rows.Count, "A").End(xlUp).Row
+    lastCol = sourceWorksheet.Cells(1, sourceWorksheet.Columns.Count).End(xlToLeft).Column
     
-    ' Find initial last row
-    lastRow = ws.UsedRange.Rows.Count
+    ' Step 2: Remove rows containing specified values in column A
+    Dim valuesToRemove As Variant
+    valuesToRemove = Array("Selections:", "Title:", "Subtitle:", "Totals")
     
-    ' Loop through rows from bottom to top to avoid skipping rows
+    ' Loop through rows from bottom to top to avoid index issues when deleting
     For i = lastRow To 1 Step -1
-        For j = 1 To ws.Cells(i, ws.Columns.Count).End(xlToLeft).Column
-            For Each txt In textsToRemove
-                If InStr(1, ws.Cells(i, j).Value, txt, vbTextCompare) > 0 Then
-                    ws.Rows(i).Delete
-                    Exit For
-                End If
-            Next txt
-        Next j
-    Next i
-    
-    ' 3. NOW add the date column after cleaning
-    currentDate = Format(Date, "yyyy-mm-dd")
-    
-    ' Insert new column at position A
-    ws.Columns("A:A").Insert Shift:=xlToRight
-    ws.Range("A1").Value = "as_of_date"
-    
-    ' Recalculate last row after deletions
-    lastRow = ws.Cells(ws.Rows.Count, "B").End(xlUp).Row
-    
-    ' Fill the date column
-    If lastRow > 1 Then
-        ws.Range("A2:A" & lastRow).Value = currentDate
-    End If
-    
-    ' 4. Select and keep only specified columns
-    columnsToKeep = Array("as_of_date", "Study Code", "Country Status", "Hub", _
-                         "Country", "Global SSO Priority", "Global SSO Priority Type", _
-                         "Country YTD New Pts")
-    
-    ' Find column positions
-    Dim colPositions() As Long
-    ReDim colPositions(UBound(columnsToKeep))
-    
-    lastCol = ws.Cells(1, ws.Columns.Count).End(xlToLeft).Column
-    
-    For i = 0 To UBound(columnsToKeep)
-        colPositions(i) = 0
-        For j = 1 To lastCol
-            If Trim(ws.Cells(1, j).Value) = columnsToKeep(i) Then
-                colPositions(i) = j
+        Dim cellValue As String
+        cellValue = Trim(sourceWorksheet.Cells(i, 1).Value)
+        
+        ' Check if the cell contains any of the values to remove
+        For j = LBound(valuesToRemove) To UBound(valuesToRemove)
+            If InStr(1, cellValue, valuesToRemove(j), vbTextCompare) > 0 Then
+                sourceWorksheet.Rows(i).Delete
                 Exit For
             End If
         Next j
     Next i
     
-    ' Create a new sheet to store filtered columns
-    Dim newWs As Worksheet
-    Set newWs = wb.Worksheets.Add(After:=ws)
-    newWs.Name = "Processed_Data"
+    ' Update last row after deletions
+    lastRow = sourceWorksheet.Cells(sourceWorksheet.Rows.Count, "A").End(xlUp).Row
     
-    ' Copy selected columns to new sheet
-    tempCol = 1
-    For i = 0 To UBound(columnsToKeep)
-        If colPositions(i) > 0 Then
-            ' Get the actual last row with data for this column
-            Dim colLastRow As Long
-            colLastRow = ws.Cells(ws.Rows.Count, colPositions(i)).End(xlUp).Row
-            
-            ' Copy the entire column range with data
-            ws.Range(ws.Cells(1, colPositions(i)), ws.Cells(colLastRow, colPositions(i))).Copy
-            newWs.Cells(1, tempCol).PasteSpecial xlPasteAll
-            tempCol = tempCol + 1
-        Else
-            ' If column not found, add empty column with header
-            newWs.Cells(1, tempCol).Value = columnsToKeep(i)
-            tempCol = tempCol + 1
+    ' Step 3: Define target columns to keep
+    targetColumns = Array("Study Code", "Country Status", "Hub", "Country", _
+                         "Global SSO Priority", "Global SSO Priority Type", _
+                         "Country YTD New Pts")
+    
+    ' Find column positions for target columns
+    ReDim colPositions(LBound(targetColumns) To UBound(targetColumns))
+    
+    For i = LBound(targetColumns) To UBound(targetColumns)
+        colPositions(i) = 0
+        For j = 1 To lastCol
+            If Trim(sourceWorksheet.Cells(1, j).Value) = targetColumns(i) Then
+                colPositions(i) = j
+                Exit For
+            End If
+        Next j
+        
+        ' Check if column was found
+        If colPositions(i) = 0 Then
+            MsgBox "Column '" & targetColumns(i) & "' not found in the source file."
+            sourceWorkbook.Close False
+            Application.ScreenUpdating = True
+            Application.DisplayAlerts = True
+            Exit Sub
         End If
     Next i
     
-    ' Clear clipboard
-    Application.CutCopyMode = False
+    ' Create new workbook
+    Set newWorkbook = Workbooks.Add
+    Set newWorksheet = newWorkbook.ActiveSheet
     
-    ' Delete original sheet (optional - comment out if you want to keep it)
-    Application.DisplayAlerts = False
-    ws.Delete
-    Application.DisplayAlerts = True
+    ' Step 4: Add as_ofdate column as the first column
+    currentDate = Format(Date, "yyyy-mm-dd")
+    newWorksheet.Cells(1, 1).Value = "as_ofdate"
+    
+    ' Fill the as_ofdate column with current date for all data rows
+    For i = 2 To lastRow
+        newWorksheet.Cells(i, 1).Value = currentDate
+    Next i
+    
+    ' Copy target columns to new workbook (starting from column 2)
+    For i = LBound(targetColumns) To UBound(targetColumns)
+        ' Copy header
+        newWorksheet.Cells(1, i + 2).Value = targetColumns(i)
+        
+        ' Copy data
+        For j = 2 To lastRow
+            newWorksheet.Cells(j, i + 2).Value = sourceWorksheet.Cells(j, colPositions(i)).Value
+        Next j
+    Next i
+    
+    ' Format the as_ofdate column
+    newWorksheet.Columns(1).NumberFormat = "yyyy-mm-dd"
     
     ' Auto-fit columns
-    newWs.Columns.AutoFit
+    newWorksheet.Columns.AutoFit
     
-    ' Turn screen updating back on
+    ' Step 5: Save the new file with specified naming convention
+    timestamp = Format(Now, "yyyymmdd_hhmmss")
+    newFileName = "Dataset for calculating YTD new pts " & timestamp & ".xlsx"
+    
+    ' Get the directory of the source file to save in the same location
+    Dim saveDirectory As String
+    saveDirectory = sourceWorkbook.Path & "\"
+    
+    ' Save the new workbook
+    newWorkbook.SaveAs Filename:=saveDirectory & newFileName, FileFormat:=xlOpenXMLWorkbook
+    
+    ' Close source workbook without saving
+    sourceWorkbook.Close False
+    
+    ' Restore settings
     Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
     
-    ' Display summary
-    Dim dataRows As Long
-    dataRows = newWs.Cells(newWs.Rows.Count, "A").End(xlUp).Row - 1
-    MsgBox "File processing completed successfully!" & vbCrLf & _
-           "Total data rows: " & dataRows, vbInformation
+    ' Show completion message
+    MsgBox "Data processing completed successfully!" & vbCrLf & _
+           "New file saved as: " & newFileName & vbCrLf & _
+           "Location: " & saveDirectory, vbInformation, "Process Complete"
     
 End Sub
