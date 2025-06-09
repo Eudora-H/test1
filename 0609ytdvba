@@ -28,81 +28,57 @@ Sub ProcessExcelFile()
     ' Turn off screen updating for better performance
     Application.ScreenUpdating = False
     
-    ' DIAGNOSTIC 1: Check initial state
-    Dim initialLastRow As Long
-    initialLastRow = ws.UsedRange.Rows.Count
-    MsgBox "Initial row count: " & initialLastRow & vbCrLf & _
-           "First cell A1 value: " & ws.Range("A1").Value
+    ' Find last row BEFORE inserting new column - using the same method that worked
+    On Error Resume Next
+    lastRow = ws.Cells.Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
+    On Error GoTo 0
     
-    ' Find last row BEFORE inserting new column
-    lastRow = initialLastRow
+    ' If Find method fails, use UsedRange
+    If lastRow = 0 Then
+        lastRow = ws.UsedRange.Rows.Count
+    End If
     
     ' 2. Create current date and insert as first column
     currentDate = Format(Date, "yyyy-mm-dd")
-    MsgBox "Date to be inserted: " & currentDate
     
     ' Insert new column at position A
     ws.Columns("A:A").Insert Shift:=xlToRight
     ws.Range("A1").Value = "as_of_date"
     
-    ' DIAGNOSTIC 2: Check after column insertion
-    MsgBox "After column insertion:" & vbCrLf & _
-           "A1 value: " & ws.Range("A1").Value & vbCrLf & _
-           "B1 value: " & ws.Range("B1").Value
-    
-    ' Fill dates using multiple methods to ensure it works
-    ' Method 1: Direct cell assignment with explicit formatting
+    ' Fill the date column - using the proven method
     For i = 2 To lastRow
         ws.Cells(i, 1).Value = currentDate
-        ws.Cells(i, 1).NumberFormat = "@" ' Text format to ensure visibility
     Next i
     
-    ' DIAGNOSTIC 3: Check if dates were filled
-    Dim sampleValues As String
-    sampleValues = "Row 2, Col A: " & ws.Cells(2, 1).Value & vbCrLf & _
-                   "Row 3, Col A: " & ws.Cells(3, 1).Value & vbCrLf & _
-                   "Row 4, Col A: " & ws.Cells(4, 1).Value
-    MsgBox "Sample values after filling dates:" & vbCrLf & sampleValues
-    
-    ' Force refresh
+    ' Force Excel to recognize the values
     ws.Calculate
     DoEvents
     
     ' 3. Remove rows containing specific text
     Dim textsToRemove As Variant
+    Dim txt As Variant
     textsToRemove = Array("Selections:", "Title:", "Subtitle:", "Totals")
     
-    ' Count dates before row deletion
-    Dim dateCountBefore As Long
-    dateCountBefore = Application.CountA(ws.Range("A2:A" & lastRow))
-    
-    ' Update lastRow after filling dates
-    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+    ' IMPORTANT: Update lastRow using column B (which now has data) instead of A
+    ' This prevents losing reference if date column has issues
+    lastRow = ws.Cells(ws.Rows.Count, "B").End(xlUp).Row
     
     ' Loop through rows from bottom to top to avoid skipping rows
-    Dim txt As Variant
-    Dim rowsDeleted As Long
-    rowsDeleted = 0
-    
     For i = lastRow To 1 Step -1
+        ' Skip header row
+        If i = 1 Then GoTo NextRow
+        
+        ' Check all columns for text to remove
         For j = 1 To ws.Cells(i, ws.Columns.Count).End(xlToLeft).Column
             For Each txt In textsToRemove
                 If InStr(1, ws.Cells(i, j).Value, txt, vbTextCompare) > 0 Then
                     ws.Rows(i).Delete
-                    rowsDeleted = rowsDeleted + 1
-                    Exit For
+                    GoTo NextRow  ' Skip to next row after deletion
                 End If
             Next txt
         Next j
+NextRow:
     Next i
-    
-    ' DIAGNOSTIC 4: Check after row deletion
-    Dim dateCountAfter As Long
-    dateCountAfter = Application.CountA(ws.Range("A:A")) - 1 ' Subtract header
-    MsgBox "Row deletion results:" & vbCrLf & _
-           "Rows deleted: " & rowsDeleted & vbCrLf & _
-           "Date count before deletion: " & dateCountBefore & vbCrLf & _
-           "Date count after deletion: " & dateCountAfter
     
     ' 4. Select and keep only specified columns
     columnsToKeep = Array("as_of_date", "Study Code", "Country Status", "Hub", _
@@ -113,33 +89,24 @@ Sub ProcessExcelFile()
     Dim colPositions() As Long
     ReDim colPositions(UBound(columnsToKeep))
     
+    ' Update lastCol and lastRow after deletions
     lastCol = ws.Cells(1, ws.Columns.Count).End(xlToLeft).Column
+    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
     
-    ' DIAGNOSTIC 5: Show column headers
-    Dim headerList As String
-    headerList = ""
-    For j = 1 To Application.Min(10, lastCol)
-        headerList = headerList & "Col " & j & ": " & ws.Cells(1, j).Value & vbCrLf
-    Next j
-    MsgBox "First 10 column headers:" & vbCrLf & headerList
-    
+    ' Initialize all positions to 0
     For i = 0 To UBound(columnsToKeep)
         colPositions(i) = 0
+    Next i
+    
+    ' Find each column
+    For i = 0 To UBound(columnsToKeep)
         For j = 1 To lastCol
-            If Trim(ws.Cells(1, j).Value) = columnsToKeep(i) Then
+            If Trim(ws.Cells(1, j).Value) = Trim(columnsToKeep(i)) Then
                 colPositions(i) = j
                 Exit For
             End If
         Next j
     Next i
-    
-    ' DIAGNOSTIC 6: Show which columns were found
-    Dim foundCols As String
-    foundCols = ""
-    For i = 0 To UBound(columnsToKeep)
-        foundCols = foundCols & columnsToKeep(i) & " at position: " & colPositions(i) & vbCrLf
-    Next i
-    MsgBox "Column positions found:" & vbCrLf & foundCols
     
     ' Create a new sheet to store filtered columns
     Dim newWs As Worksheet
@@ -150,18 +117,21 @@ Sub ProcessExcelFile()
     tempCol = 1
     For i = 0 To UBound(columnsToKeep)
         If colPositions(i) > 0 Then
-            ' DIAGNOSTIC: Check what we're copying
-            If columnsToKeep(i) = "as_of_date" Then
-                Dim nonBlankDates As Long
-                nonBlankDates = Application.CountA(ws.Range(ws.Cells(2, colPositions(i)), ws.Cells(lastRow, colPositions(i))))
-                MsgBox "Copying as_of_date column:" & vbCrLf & _
-                       "Position: " & colPositions(i) & vbCrLf & _
-                       "Non-blank dates: " & nonBlankDates & vbCrLf & _
-                       "Sample value: " & ws.Cells(2, colPositions(i)).Value
-            End If
+            ' Use a more robust copy method
+            Dim sourceRange As Range
+            Dim destRange As Range
             
-            ws.Columns(colPositions(i)).Copy
-            newWs.Columns(tempCol).PasteSpecial xlPasteAll
+            ' Define source range (entire column with data)
+            Set sourceRange = ws.Range(ws.Cells(1, colPositions(i)), ws.Cells(lastRow, colPositions(i)))
+            
+            ' Define destination range
+            Set destRange = newWs.Cells(1, tempCol)
+            
+            ' Copy values and formats
+            sourceRange.Copy
+            destRange.PasteSpecial xlPasteValues
+            destRange.PasteSpecial xlPasteFormats
+            
             tempCol = tempCol + 1
         Else
             ' If column not found, add empty column with header
@@ -173,19 +143,10 @@ Sub ProcessExcelFile()
     ' Clear clipboard
     Application.CutCopyMode = False
     
-    ' DIAGNOSTIC 7: Final check on new sheet
-    Dim finalDateCount As Long
-    finalDateCount = Application.CountA(newWs.Range("A2:A" & newWs.UsedRange.Rows.Count))
-    MsgBox "Final check on Processed_Data sheet:" & vbCrLf & _
-           "A1 value: " & newWs.Range("A1").Value & vbCrLf & _
-           "A2 value: " & newWs.Range("A2").Value & vbCrLf & _
-           "A3 value: " & newWs.Range("A3").Value & vbCrLf & _
-           "Total non-blank dates: " & finalDateCount
-    
-    ' Don't delete original sheet for diagnostic purposes
-    ' Application.DisplayAlerts = False
-    ' ws.Delete
-    ' Application.DisplayAlerts = True
+    ' Delete original sheet (optional - comment out if you want to keep it)
+    Application.DisplayAlerts = False
+    ws.Delete
+    Application.DisplayAlerts = True
     
     ' Auto-fit columns
     newWs.Columns.AutoFit
@@ -193,6 +154,12 @@ Sub ProcessExcelFile()
     ' Turn screen updating back on
     Application.ScreenUpdating = True
     
-    MsgBox "Processing completed. Check both sheets to compare results.", vbInformation
+    ' Final verification
+    Dim dateCount As Long
+    dateCount = Application.CountA(newWs.Range("A2:A" & newWs.UsedRange.Rows.Count))
+    
+    MsgBox "File processing completed!" & vbCrLf & _
+           "Total data rows in final sheet: " & (newWs.UsedRange.Rows.Count - 1) & vbCrLf & _
+           "Rows with dates: " & dateCount, vbInformation
     
 End Sub
