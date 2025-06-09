@@ -43,11 +43,23 @@ Sub ProcessDataFile()
     ' Step 3: Remove rows containing specific text
     Dim deleteRows As Collection
     Set deleteRows = New Collection
+    Dim studyCodeCol As Long
+    studyCodeCol = 0
+    
+    ' Find the "Study Code" column
+    For j = 1 To ws.Cells(1, ws.Columns.Count).End(xlToLeft).Column
+        If Trim(ws.Cells(1, j).Value) = "Study Code" Then
+            studyCodeCol = j
+            Exit For
+        End If
+    Next j
     
     ' Search for rows to delete
     For i = lastRow To 1 Step -1
         Dim rowText As String
         Dim j As Long
+        Dim deleteRow As Boolean
+        deleteRow = False
         
         ' Check all cells in the row for the specified text
         For j = 1 To ws.Cells(i, ws.Columns.Count).End(xlToLeft).Column
@@ -55,10 +67,22 @@ Sub ProcessDataFile()
             If InStr(rowText, "Selections:") > 0 Or _
                InStr(rowText, "Title:") > 0 Or _
                InStr(rowText, "Subtitle:") > 0 Then
-                ws.Rows(i).Delete
+                deleteRow = True
                 Exit For
             End If
         Next j
+        
+        ' Also check if Study Code column contains "Totals"
+        If studyCodeCol > 0 And Not deleteRow Then
+            If InStr(CStr(ws.Cells(i, studyCodeCol).Value), "Totals") > 0 Then
+                deleteRow = True
+            End If
+        End If
+        
+        ' Delete the row if flagged
+        If deleteRow Then
+            ws.Rows(i).Delete
+        End If
     Next i
     
     ' Update lastRow after deletion
