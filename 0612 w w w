@@ -1,0 +1,85 @@
+在Power BI中，你遇到的这个问题是因为度量值`Study_Status`依赖于多个字段（Study、Country、时间），当用作过滤器时会影响所有相关字段的过滤器上下文。
+
+以下是几种解决方案：
+
+## 方案1：创建独立的Study过滤器字段
+
+在数据模型中创建一个专门用于过滤的Study字段：
+
+```dax
+Study_Filter = 
+VAR CurrentStudy = SELECTEDVALUE(Portfolio[Study])
+RETURN 
+IF(
+    NOT ISBLANK(CurrentStudy),
+    CurrentStudy,
+    BLANK()
+)
+```
+
+## 方案2：修改原度量值，使用ALLEXCEPT控制过滤器上下文
+
+```dax
+Study_Status_Modified = 
+VAR val = LOOKUPVALUE(
+    Portfolio[study_status],
+    CountrySort[Country], ALLCOMBOS_light[Country],
+    Portfolio[cur_mon_format], ALLCOMBOS_light[cur_mon_format],
+    Portfolio[Study], ALLCOMBOS_light[Study]
+)
+RETURN
+IF(ISBLANK(val), "", val)
+```
+
+## 方案3：创建辅助表专门用于Study过滤
+
+创建一个只包含Study字段的辅助表，不与其他表建立关系：
+
+```dax
+Study_Filter_Table = DISTINCT(Portfolio[Study])
+```
+
+然后创建新的度量值：
+
+```dax
+Study_Status_Filter = 
+VAR SelectedStudy = SELECTEDVALUE(Study_Filter_Table[Study])
+VAR val = 
+IF(
+    NOT ISBLANK(SelectedStudy),
+    CALCULATE(
+        LOOKUPVALUE(
+            Portfolio[study_status],
+            CountrySort[Country], ALLCOMBOS_light[Country],
+            Portfolio[cur_mon_format], ALLCOMBOS_light[cur_mon_format],
+            Portfolio[Study], SelectedStudy
+        ),
+        ALL(Portfolio[Study]),
+        Portfolio[Study] = SelectedStudy
+    ),
+    LOOKUPVALUE(
+        Portfolio[study_status],
+        CountrySort[Country], ALLCOMBOS_light[Country],
+        Portfolio[cur_mon_format], ALLCOMBOS_light[cur_mon_format],
+        Portfolio[Study], ALLCOMBOS_light[Study]
+    )
+)
+RETURN
+IF(ISBLANK(val), "", val)
+```
+
+## 方案4：使用计算列而非度量值
+
+如果数据量不大，可以考虑创建计算列：
+
+```dax
+Study_Status_Column = 
+LOOKUPVALUE(
+    Portfolio[study_status],
+    Portfolio[Country], Portfolio[Country],
+    Portfolio[cur_mon_format], Portfolio[cur_mon_format],
+    Portfolio[Study], Portfolio[Study]
+)
+```
+
+**推荐使用方案3**，因为它能完全隔离Study的过滤逻辑，同时保持原有的匹配逻辑不变。​​​​​​​​​​​​​​​​
