@@ -1,0 +1,67 @@
+这个错误是因为在度量值中直接引用了包含多个值的列。需要使用`SELECTEDVALUE()`来获取当前上下文中的单一值。
+
+让我修正方案3：
+
+## 修正后的方案3：
+
+**步骤1：创建Study过滤器表**
+```dax
+Study_Filter_Table = DISTINCT(Portfolio[Study])
+```
+
+**步骤2：修正度量值**
+```dax
+Study_Status_Filter = 
+VAR SelectedStudyFromFilter = SELECTEDVALUE(Study_Filter_Table[Study])
+VAR CurrentCountry = SELECTEDVALUE(ALLCOMBOS_light[Country])
+VAR CurrentMonthFormat = SELECTEDVALUE(ALLCOMBOS_light[cur_mon_format])
+VAR CurrentStudy = SELECTEDVALUE(ALLCOMBOS_light[Study])
+
+VAR val = 
+IF(
+    NOT ISBLANK(SelectedStudyFromFilter),
+    // 如果选择了Study过滤器，使用选中的Study
+    LOOKUPVALUE(
+        Portfolio[study_status],
+        Portfolio[Country], CurrentCountry,
+        Portfolio[cur_mon_format], CurrentMonthFormat,
+        Portfolio[Study], SelectedStudyFromFilter
+    ),
+    // 如果没有选择Study过滤器，使用原逻辑
+    LOOKUPVALUE(
+        Portfolio[study_status],
+        Portfolio[Country], CurrentCountry,
+        Portfolio[cur_mon_format], CurrentMonthFormat,
+        Portfolio[Study], CurrentStudy
+    )
+)
+RETURN
+IF(ISBLANK(val), "", val)
+```
+
+## 或者更简化的版本：
+
+```dax
+Study_Status_Filter = 
+VAR SelectedStudyFromFilter = SELECTEDVALUE(Study_Filter_Table[Study])
+VAR CurrentCountry = SELECTEDVALUE(ALLCOMBOS_light[Country])
+VAR CurrentMonthFormat = SELECTEDVALUE(ALLCOMBOS_light[cur_mon_format])
+VAR StudyToUse = IF(ISBLANK(SelectedStudyFromFilter), SELECTEDVALUE(ALLCOMBOS_light[Study]), SelectedStudyFromFilter)
+
+VAR val = 
+LOOKUPVALUE(
+    Portfolio[study_status],
+    Portfolio[Country], CurrentCountry,
+    Portfolio[cur_mon_format], CurrentMonthFormat,
+    Portfolio[Study], StudyToUse
+)
+RETURN
+IF(ISBLANK(val), "", val)
+```
+
+**使用说明：**
+1. 在可视化中使用`Study_Filter_Table[Study]`作为过滤器
+2. 使用`Study_Status_Filter`度量值来显示结果
+3. 这样Study过滤器就不会影响Country和时间的过滤器上下文
+
+这样应该能解决"cannot be determined"的错误问题。​​​​​​​​​​​​​​​​
