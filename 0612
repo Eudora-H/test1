@@ -1,0 +1,52 @@
+Looking at your Power BI formula, you want to display the `Study_status` value but filter by the `Study` field when used as a slicer. Here are a couple of approaches to achieve this:
+
+## Option 1: Create a separate measure for filtering
+Keep your current measure for display, and create a separate calculated column or measure for filtering:
+
+**Display Measure (keep as is):**
+```dax
+Study_Status = 
+VAR val = LOOKUPVALUE(Portfolio[study_status],
+    CountrySort[Country], AllCombos_light[Country],
+    Portfolio[cur_mon_format], AllCombos_light[cur_mon_format],
+    Portfolio[Study], AllCombos_light[Study]
+)
+RETURN
+IF(ISBLANK(val), "", val)
+```
+
+**Filter Measure:**
+```dax
+Study_Filter = AllCombos_light[Study]
+```
+
+Use `Study_Filter` in your slicer and `Study_Status` for display.
+
+## Option 2: Modify your measure to be context-aware
+```dax
+Study_Status = 
+VAR val = LOOKUPVALUE(Portfolio[study_status],
+    CountrySort[Country], AllCombos_light[Country],
+    Portfolio[cur_mon_format], AllCombos_light[cur_mon_format],
+    Portfolio[Study], AllCombos_light[Study]
+)
+VAR FilterContext = HASONEFILTER(AllCombos_light[Study])
+RETURN
+IF(FilterContext, SELECTEDVALUE(AllCombos_light[Study]), IF(ISBLANK(val), "", val))
+```
+
+## Option 3: Create a calculated column (recommended)
+If this data doesn't change frequently, create a calculated column in `AllCombos_light`:
+
+```dax
+Study_Status_Column = 
+LOOKUPVALUE(Portfolio[study_status],
+    CountrySort[Country], AllCombos_light[Country],
+    Portfolio[cur_mon_format], AllCombos_light[cur_mon_format],
+    Portfolio[Study], AllCombos_light[Study]
+)
+```
+
+Then use `AllCombos_light[Study]` for filtering and `AllCombos_light[Study_Status_Column]` for display.
+
+The calculated column approach (Option 3) is usually the most efficient and gives you the cleanest separation between what you display and what you filter by.​​​​​​​​​​​​​​​​
