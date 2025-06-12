@@ -1,0 +1,58 @@
+明白了！你想用 `study_status` 作为筛选器，但筛选时只影响 `Study` 字段，不影响 `Country` 和 `cur_month`。
+
+这里有几个解决方案：
+
+## 方案1：创建辅助表（推荐）
+创建一个新的表来建立 `study_status` 和 `Study` 的对应关系：
+
+```dax
+StudyStatus_Table = 
+DISTINCT(
+    SELECTCOLUMNS(
+        Portfolio,
+        "Study", Portfolio[Study],
+        "Study_Status", Portfolio[study_status]
+    )
+)
+```
+
+然后：
+1. 用 `StudyStatus_Table[Study_Status]` 作为筛选器
+2. 在 `StudyStatus_Table` 和 `AllCombos_light` 之间建立关系：`StudyStatus_Table[Study]` → `AllCombos_light[Study]`
+
+## 方案2：修改度量值使其支持筛选
+```dax
+Study_Status = 
+VAR SelectedStudyStatus = SELECTEDVALUE('StudyStatus_Table'[Study_Status])
+VAR FilteredStudies = 
+    IF(
+        ISBLANK(SelectedStudyStatus),
+        AllCombos_light[Study],
+        CALCULATETABLE(
+            VALUES(Portfolio[Study]),
+            Portfolio[study_status] = SelectedStudyStatus
+        )
+    )
+VAR val = LOOKUPVALUE(Portfolio[study_status],
+    Portfolio[Study], AllCombos_light[Study]
+)
+RETURN
+IF(AllCombos_light[Study] IN FilteredStudies, IF(ISBLANK(val), "", val), BLANK())
+```
+
+## 方案3：使用 TREATAS 函数
+如果你不想创建新表，可以在可视化中使用：
+
+```dax
+Filtered_Study_Status = 
+VAR SelectedStatus = SELECTEDVALUE(Portfolio[study_status])
+VAR RelatedStudies = CALCULATETABLE(VALUES(Portfolio[Study]), Portfolio[study_status] = SelectedStatus)
+RETURN
+IF(
+    ISBLANK(SelectedStatus),
+    [Study_Status],
+    IF(AllCombos_light[Study] IN RelatedStudies, [Study_Status], BLANK())
+)
+```
+
+**推荐使用方案1**，因为它最清晰，性能也比较好，而且便于维护。​​​​​​​​​​​​​​​​
